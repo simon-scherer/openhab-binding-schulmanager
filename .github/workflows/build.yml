@@ -55,12 +55,15 @@ jobs:
           mvn -B -ntp spotless:apply -pl :$BUNDLE
           diff -ru ../binding/bundles/$BUNDLE bundles/$BUNDLE -x target > ../spotless.diff || true
           if [ -s ../spotless.diff ]; then
-            echo "::warning::Formatting differs from the openHAB rules, see artifact spotless-diff"
+            echo "::warning::Formatting differs from the openHAB rules, see artifact reports/spotless.diff"
+            cat ../spotless.diff
           fi
 
       - name: Build with checks
         working-directory: openhab-addons
-        run: mvn -B -ntp clean install -pl :$BUNDLE -am -DskipTests=false
+        # formatting was applied and reported in the previous step; the release poms of the
+        # openhab-addons tag itself do not pass spotless, so the check is skipped here
+        run: mvn -B -ntp clean install -pl :$BUNDLE -am -DskipTests=false -Dspotless.check.skip=true
 
       - name: Collect results
         if: always()
