@@ -1,0 +1,43 @@
+// Schulmanager Online – Items für ein Kind (kind1)
+// Für ein weiteres Kind: Block kopieren, "Kind1"/"kind1" ersetzen.
+
+Group  gSchulmanager_Kind1  "Schule Kind 1"  <school>  ["Equipment"]
+
+// ---------------- Stundenplan
+String   SM_Kind1_Heute            "Stundenplan heute"            <calendar>  (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:schedule#today"}
+String   SM_Kind1_Morgen           "Stundenplan morgen"           <calendar>  (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:schedule#tomorrow"}
+String   SM_Kind1_NaechsterTag     "Nächster Schultag"            <calendar>  (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:schedule#nextDay"}
+DateTime SM_Kind1_NaechsterTagDatum "Nächster Schultag [%1$ta %1$td.%1$tm.]" <calendar> (gSchulmanager_Kind1) {channel="schulmanager:student:konto:kind1:schedule#nextDayDate"}
+String   SM_Kind1_AktuelleStunde   "Jetzt [%s]"                   <time>      (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:schedule#currentLesson"}
+String   SM_Kind1_NaechsteStunde   "Als Nächstes [%s]"            <time>      (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:schedule#nextLesson"}
+DateTime SM_Kind1_BeginnHeute      "Beginn heute [%1$tH:%1$tM]"   <time>      (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:schedule#firstLessonToday"}
+DateTime SM_Kind1_EndeHeute        "Schulschluss heute [%1$tH:%1$tM]" <time>  (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:schedule#lastLessonToday"}
+DateTime SM_Kind1_BeginnNaechster  "Beginn nächster Schultag [%1$ta %1$tH:%1$tM]" <time> (gSchulmanager_Kind1) {channel="schulmanager:student:konto:kind1:schedule#firstLessonNextDay"}
+Number   SM_Kind1_AenderungenHeute "Änderungen heute [%d]"        <error>     (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:schedule#changesToday"}
+Number   SM_Kind1_AenderungenMorgen "Änderungen morgen [%d]"      <error>     (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:schedule#changesTomorrow"}
+String   SM_Kind1_Aenderungen      "Vertretungen/Entfall"         <error>     (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:schedule#changesSummary"}
+
+// ---------------- Arbeiten / Tests / Schultermine
+String   SM_Kind1_NaechsteArbeit   "Nächste Arbeit [%s]"          <text>      (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:exams#next"}
+DateTime SM_Kind1_NaechsteArbeitDatum "Datum nächste Arbeit [%1$ta %1$td.%1$tm.]" <calendar> (gSchulmanager_Kind1) {channel="schulmanager:student:konto:kind1:exams#nextDate"}
+Number   SM_Kind1_TageBisArbeit    "Tage bis zur nächsten Arbeit [%d]" <calendar> (gSchulmanager_Kind1) {channel="schulmanager:student:konto:kind1:exams#daysUntilNext"}
+Number   SM_Kind1_Arbeiten14Tage   "Arbeiten in 14 Tagen [%d]"    <text>      (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:exams#countNext14Days"}
+String   SM_Kind1_ArbeitenListe    "Anstehende Arbeiten"          <text>      (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:exams#list"}
+String   SM_Kind1_Schultermin      "Nächster Schultermin [%s]"    <calendar>  (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:exams#nextSchoolEvent"}
+
+// ---------------- Hausaufgaben
+String   SM_Kind1_HA_Neueste       "Neueste Hausaufgabe [%s]"     <text>      (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:homework#latest"}
+Number   SM_Kind1_HA_Anzahl7       "Hausaufgaben (7 Tage) [%d]"   <text>      (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:homework#countRecent"}
+String   SM_Kind1_HA_Liste         "Hausaufgaben (14 Tage)"       <text>      (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:homework#list"}
+
+// ---------------- Widget-Daten (für die Widgets sm_stundenplan, sm_arbeiten, sm_hausaufgaben)
+// Große JSON-Texte: nicht persistieren (siehe mapdb.persist), nicht in der Übersicht anzeigen.
+String   SM_Kind1_StundenplanWidget  "Stundenplan Widget-Daten"   (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:schedule#widget"}
+String   SM_Kind1_ArbeitenWidget     "Arbeiten Widget-Daten"      (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:exams#widget"}
+String   SM_Kind1_HausaufgabenWidget "Hausaufgaben Widget-Daten"  (gSchulmanager_Kind1)  {channel="schulmanager:student:konto:kind1:homework#widget"}
+
+// ---------------- Konto (für alle Kinder gemeinsam)
+Number   SM_Elternbriefe           "Ungelesene Elternbriefe [%d]" <mail>      {channel="schulmanager:account:konto:lettersUnread"}
+String   SM_ElternbriefeWidget     "Elternbriefe Widget-Daten"            {channel="schulmanager:account:konto:lettersWidget"}
+Number   SM_Nachrichten            "Ungelesene Nachrichten [%d]"  <mail>      {channel="schulmanager:account:konto:messagesUnread"}
+DateTime SM_LetzteAktualisierung   "Schulmanager aktualisiert [%1$td.%1$tm. %1$tH:%1$tM]" <time> {channel="schulmanager:account:konto:lastUpdate"}

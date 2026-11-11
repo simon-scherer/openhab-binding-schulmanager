@@ -1,0 +1,1002 @@
+# Schulmanager Online – Widgets für die openHAB Main UI (openHAB 5.2)
+# Ablage: $OPENHAB_CONF/yaml/schulmanager_widgets.yaml
+# Alle Widgets haben die Eigenschaft "kind" (z. B. Kind1). Daraus ergeben sich die Item-Namen:
+#   SM_<kind>_StundenplanWidget, SM_<kind>_ArbeitenWidget, SM_<kind>_HausaufgabenWidget,
+#   SM_<kind>_AktuelleStunde, SM_<kind>_NaechsteStunde, SM_<kind>_EndeHeute, SM_<kind>_NaechsteArbeit ...
+version: 1
+
+widgets:
+
+  # ------------------------------------------------------------------ Status
+  sm_status:
+    component: f7-card
+    props:
+      parameters:
+        - name: kind
+          label: Kind (Item-Kürzel)
+          description: Teil der Item-Namen, z. B. Kind1 für SM_Kind1_...
+          type: TEXT
+          default: Kind1
+          required: true
+        - name: title
+          label: Titel
+          type: TEXT
+    config:
+      noShadow: false
+      stylesheet: |
+        .sm-t{font-size:17px;font-weight:600;padding:12px 14px 0}
+        .sm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;padding:10px 12px 12px}
+        .sm-tile{border-radius:10px;padding:8px 10px;background:rgba(127,127,127,.12);min-width:0}
+        .sm-k{font-size:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.65;display:flex;align-items:center;gap:5px}
+        .sm-v{font-size:15px;font-weight:600;margin-top:3px;line-height:1.3;overflow-wrap:anywhere}
+        .sm-sub{font-size:12px;opacity:.7;margin-top:2px}
+        .sm-tile.warn{background:rgba(255,149,0,.16)}
+        .sm-tile.alert{background:rgba(255,59,48,.14)}
+    slots:
+      default:
+        - component: div
+          config:
+            class: sm-t
+            content: =props.title || ''
+            visible: =!!props.title
+        - component: div
+          config:
+            class: sm-tiles
+          slots:
+            default:
+              - component: div
+                config:
+                  class: sm-tile
+                slots:
+                  default:
+                    - component: div
+                      config:
+                        class: sm-k
+                      slots:
+                        default:
+                          - component: f7-icon
+                            config:
+                              f7: clock
+                              size: 13
+                          - component: Content
+                            config:
+                              text: Jetzt
+                    - component: div
+                      config:
+                        class: sm-v
+                        content: "=@('SM_' + props.kind + '_AktuelleStunde')"
+              - component: div
+                config:
+                  class: sm-tile
+                slots:
+                  default:
+                    - component: div
+                      config:
+                        class: sm-k
+                      slots:
+                        default:
+                          - component: f7-icon
+                            config:
+                              f7: forward
+                              size: 13
+                          - component: Content
+                            config:
+                              text: Als Nächstes
+                    - component: div
+                      config:
+                        class: sm-v
+                        content: "=@('SM_' + props.kind + '_NaechsteStunde')"
+              - component: div
+                config:
+                  class: "=Number(@@('SM_' + props.kind + '_AenderungenHeute')) > 0 ? 'sm-tile warn' : 'sm-tile'"
+                slots:
+                  default:
+                    - component: div
+                      config:
+                        class: sm-k
+                      slots:
+                        default:
+                          - component: f7-icon
+                            config:
+                              f7: house
+                              size: 13
+                          - component: Content
+                            config:
+                              text: Schulschluss heute
+                    - component: div
+                      config:
+                        class: sm-v
+                        content: "=(@@('SM_' + props.kind + '_EndeHeute') === 'UNDEF' || @@('SM_' + props.kind + '_EndeHeute') === 'NULL' || @@('SM_' + props.kind + '_EndeHeute') === '-') ? 'kein Unterricht' : dayjs(@@('SM_' + props.kind + '_EndeHeute')).format('HH:mm') + ' Uhr'"
+                    - component: div
+                      config:
+                        class: sm-sub
+                        content: "=Number(@@('SM_' + props.kind + '_AenderungenHeute')) > 0 ? @@('SM_' + props.kind + '_AenderungenHeute') + ' Änderung(en) heute' : 'keine Änderungen heute'"
+              - component: div
+                config:
+                  class: "=Number(@@('SM_' + props.kind + '_TageBisArbeit')) <= 2 ? 'sm-tile alert' : (Number(@@('SM_' + props.kind + '_TageBisArbeit')) <= 7 ? 'sm-tile warn' : 'sm-tile')"
+                slots:
+                  default:
+                    - component: div
+                      config:
+                        class: sm-k
+                      slots:
+                        default:
+                          - component: f7-icon
+                            config:
+                              f7: pencil
+                              size: 13
+                          - component: Content
+                            config:
+                              text: Nächste Arbeit
+                    - component: div
+                      config:
+                        class: sm-v
+                        content: "=@('SM_' + props.kind + '_NaechsteArbeit')"
+
+  # ------------------------------------------------------------------ Stundenplan
+  sm_stundenplan:
+    component: f7-card
+    props:
+      parameters:
+        - name: kind
+          label: Kind (Item-Kürzel)
+          description: Teil der Item-Namen, z. B. Kind1 für SM_Kind1_StundenplanWidget
+          type: TEXT
+          default: Kind1
+          required: true
+        - name: title
+          label: Titel
+          type: TEXT
+          default: Stundenplan
+    config:
+      stylesheet: |
+        .sm-head{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:12px 14px 2px}
+        .sm-title{font-size:17px;font-weight:600}
+        .sm-tabs{display:flex;gap:6px;flex-wrap:wrap}
+        .sm-tabs .button{height:auto;min-height:28px;padding:3px 10px;line-height:1.25;text-transform:none;font-size:13px;width:auto}
+        .sm-wrap{container-type:inline-size;padding:6px 10px 10px}
+        .sm-grid{display:grid;gap:3px;align-items:stretch}
+        .sm-dh{text-align:center;font-weight:600;font-size:13px;padding:2px 0 4px;border-radius:7px}
+        .sm-dh small{display:block;font-weight:400;opacity:.65;font-size:11px}
+        .sm-dh.today{color:var(--f7-theme-color);background:rgba(var(--f7-theme-color-rgb),.08)}
+        .sm-pc{text-align:right;padding:5px 6px 0 0;font-weight:600;font-size:13px;line-height:1.15}
+        .sm-pc small{display:block;font-weight:400;opacity:.6;font-size:10.5px}
+        .sm-cell{border-radius:7px;min-height:42px;display:flex;flex-direction:column;gap:2px}
+        .sm-cell.today{background:rgba(var(--f7-theme-color-rgb),.08)}
+        .sm-l.link{display:block;text-align:left;border-radius:7px;padding:4px 6px;background:rgba(127,127,127,.13);border-left:3px solid transparent;color:inherit;overflow:hidden;width:100%;line-height:1.25;height:auto}
+        .sm-l .sm-s{font-weight:600;font-size:13.5px;line-height:1.2;overflow:hidden;overflow-wrap:anywhere;hyphens:auto;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+        .sm-row .sm-l .sm-s{display:block;-webkit-line-clamp:unset;font-size:14px}
+        .sm-l .sm-m{font-size:11.5px;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .sm-l .sm-c{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .sm-l.st-chg{background:rgba(255,149,0,.17);border-left-color:#ff9500}
+        .sm-l.st-chg .sm-c{color:#e08600}
+        .sm-l.st-sp{background:rgba(0,122,255,.14);border-left-color:#007aff}
+        .sm-l.st-sp .sm-c{color:#2f80ff}
+        .sm-l.st-x{background:rgba(255,59,48,.13);border-left-color:#ff3b30}
+        .sm-l.st-x .sm-s{text-decoration:line-through;color:#ff3b30}
+        .sm-l.st-x .sm-c{color:#ff3b30}
+        .sm-l.now{box-shadow:0 0 0 2px var(--f7-theme-color)}
+        .sm-l.sel{box-shadow:0 0 0 2px #888}
+        .sm-list{display:none}
+        .sm-day{margin-bottom:10px}
+        .sm-day-h{font-weight:600;font-size:14px;margin:4px 0 4px}
+        .sm-day.today .sm-day-h{color:var(--f7-theme-color)}
+        .sm-row{display:flex;gap:8px;align-items:flex-start;margin-bottom:3px}
+        .sm-pn{width:18px;flex:none;text-align:right;font-weight:600;opacity:.6;padding-top:5px;font-size:13px}
+        .sm-row .sm-l.link{flex:1}
+        .sm-empty{opacity:.6;font-size:13px;padding:2px 0}
+        .sm-det{margin:10px 2px 0;padding:8px 10px;border-radius:8px;background:rgba(127,127,127,.12);font-size:13px;line-height:1.45}
+        .sm-det b{font-size:14px}
+        .sm-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;opacity:.75;margin:8px 2px 0}
+        .sm-legend span:before{content:"";display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+        .sm-legend .lg-chg:before{background:#ff9500}
+        .sm-legend .lg-x:before{background:#ff3b30}
+        .sm-legend .lg-sp:before{background:#007aff}
+        @container (max-width: 520px){.sm-grid{display:none}.sm-list{display:block}}
+    slots:
+      default:
+        - component: oh-context
+          config:
+            constants:
+              n: "='SM_' + props.kind + '_StundenplanWidget'"
+            variables:
+              week: -1
+              sel: null
+            functions:
+              d: "=(s) => (s && s.startsWith && s.startsWith('{')) ? JSON.parse(s) : ({weeks: [], defaultWeek: 0})"
+              w: "=(x, v) => x.weeks.length === 0 ? ({days: [], rows: [], cols: 5, label: ''}) : x.weeks[Math.min(v >= 0 ? v : x.defaultWeek, x.weeks.length - 1)]"
+          slots:
+            default:
+              - component: div
+                config:
+                  class: sm-head
+                slots:
+                  default:
+                    - component: div
+                      config:
+                        class: sm-title
+                        content: =props.title || 'Stundenplan'
+                    - component: oh-repeater
+                      config:
+                        for: wk
+                        sourceType: array
+                        in: =fn.d(items[const.n].state).weeks
+                        containerClasses:
+                          - sm-tabs
+                      slots:
+                        default:
+                          - component: oh-button
+                            config:
+                              text: "=loop.wk.label + (loop.wk.changes > 0 ? ' · ' + loop.wk.changes + ' Änd.' : '')"
+                              tooltip: =loop.wk.range
+                              small: true
+                              round: true
+                              fill: "=loop.wk_idx === (vars.week >= 0 ? vars.week : fn.d(items[const.n].state).defaultWeek)"
+                              outline: "=loop.wk_idx !== (vars.week >= 0 ? vars.week : fn.d(items[const.n].state).defaultWeek)"
+                              action: variable
+                              actionVariable: week
+                              actionVariableValue: =loop.wk_idx
+              - component: div
+                config:
+                  class: sm-wrap
+                slots:
+                  default:
+                    - component: div
+                      config:
+                        class: sm-empty
+                        content: Noch keine Stundenplandaten (Item prüfen)
+                        visible: =fn.d(items[const.n].state).weeks.length === 0
+                    # ---------------- grid (wide)
+                    - component: div
+                      config:
+                        class: sm-grid
+                        style:
+                          grid-template-columns: "='40px repeat(' + fn.w(fn.d(items[const.n].state), vars.week).cols + ', minmax(0, 1fr))'"
+                      slots:
+                        default:
+                          - component: div
+                          - component: oh-repeater
+                            config:
+                              for: day
+                              sourceType: array
+                              fragment: true
+                              in: =fn.w(fn.d(items[const.n].state), vars.week).days
+                            slots:
+                              default:
+                                - component: div
+                                  config:
+                                    class: "=loop.day.today ? 'sm-dh today' : 'sm-dh'"
+                                  slots:
+                                    default:
+                                      - component: Content
+                                        config:
+                                          text: =loop.day.wd
+                                      - component: small
+                                        config:
+                                          content: =loop.day.dm
+                          - component: oh-repeater
+                            config:
+                              for: row
+                              sourceType: array
+                              fragment: true
+                              in: =fn.w(fn.d(items[const.n].state), vars.week).rows
+                            slots:
+                              default:
+                                - component: div
+                                  config:
+                                    class: sm-pc
+                                  slots:
+                                    default:
+                                      - component: Content
+                                        config:
+                                          text: =loop.row.p
+                                      - component: small
+                                        config:
+                                          content: =loop.row.from
+                                - component: oh-repeater
+                                  config:
+                                    for: cell
+                                    sourceType: array
+                                    fragment: true
+                                    in: =loop.row.cells
+                                  slots:
+                                    default:
+                                      - component: div
+                                        config:
+                                          class: "=loop.cell.today ? 'sm-cell today' : 'sm-cell'"
+                                        slots:
+                                          default:
+                                            - component: oh-repeater
+                                              config:
+                                                for: les
+                                                sourceType: array
+                                                fragment: true
+                                                in: =loop.cell.l
+                                              slots:
+                                                default:
+                                                  - component: oh-link
+                                                    config:
+                                                      class: "='sm-l st-' + loop.les.st + (loop.les.now ? ' now' : '') + (vars.sel && vars.sel.id === loop.les.id ? ' sel' : '')"
+                                                      action: variable
+                                                      actionVariable: sel
+                                                      actionVariableValue: "=vars.sel && vars.sel.id === loop.les.id ? null : loop.les"
+                                                    slots:
+                                                      default:
+                                                        - component: div
+                                                          config:
+                                                            class: sm-s
+                                                            content: =loop.les.s
+                                                        - component: div
+                                                          config:
+                                                            class: sm-m
+                                                            content: =loop.les.m
+                                                            visible: =loop.les.m !== ''
+                                                        - component: div
+                                                          config:
+                                                            class: sm-c
+                                                            content: =loop.les.c
+                                                            visible: =loop.les.c !== ''
+                    # ---------------- list (narrow)
+                    - component: div
+                      config:
+                        class: sm-list
+                      slots:
+                        default:
+                          - component: oh-repeater
+                            config:
+                              for: day
+                              sourceType: array
+                              fragment: true
+                              in: =fn.w(fn.d(items[const.n].state), vars.week).days
+                            slots:
+                              default:
+                                - component: div
+                                  config:
+                                    class: "=loop.day.today ? 'sm-day today' : 'sm-day'"
+                                  slots:
+                                    default:
+                                      - component: div
+                                        config:
+                                          class: sm-day-h
+                                          content: =loop.day.label
+                                      - component: div
+                                        config:
+                                          class: sm-empty
+                                          content: Kein Unterricht
+                                          visible: =loop.day.lessons.length === 0
+                                      - component: oh-repeater
+                                        config:
+                                          for: les
+                                          sourceType: array
+                                          fragment: true
+                                          in: =loop.day.lessons
+                                        slots:
+                                          default:
+                                            - component: div
+                                              config:
+                                                class: sm-row
+                                              slots:
+                                                default:
+                                                  - component: div
+                                                    config:
+                                                      class: sm-pn
+                                                      content: =loop.les.p
+                                                  - component: oh-link
+                                                    config:
+                                                      class: "='sm-l st-' + loop.les.st + (loop.les.now ? ' now' : '') + (vars.sel && vars.sel.id === loop.les.id ? ' sel' : '')"
+                                                      action: variable
+                                                      actionVariable: sel
+                                                      actionVariableValue: "=vars.sel && vars.sel.id === loop.les.id ? null : loop.les"
+                                                    slots:
+                                                      default:
+                                                        - component: div
+                                                          config:
+                                                            class: sm-s
+                                                            content: =loop.les.s
+                                                        - component: div
+                                                          config:
+                                                            class: sm-m
+                                                            content: =loop.les.m
+                                                            visible: =loop.les.m !== ''
+                                                        - component: div
+                                                          config:
+                                                            class: sm-c
+                                                            content: =loop.les.c
+                                                            visible: =loop.les.c !== ''
+                    # ---------------- details of the tapped lesson
+                    - component: div
+                      config:
+                        class: sm-det
+                        visible: =!!vars.sel
+                      slots:
+                        default:
+                          - component: b
+                            config:
+                              content: "=vars.sel ? vars.sel.f + (vars.sel.g !== '' ? ' (' + vars.sel.g + ')' : '') : ''"
+                          - component: div
+                            config:
+                              content: "=vars.sel ? vars.sel.p + '. Stunde' + (vars.sel.t ? ' · ' + vars.sel.t + ' Uhr' : '') : ''"
+                          - component: div
+                            config:
+                              content: "=vars.sel ? 'Lehrkraft: ' + (vars.sel.tn || vars.sel.m) : ''"
+                              visible: "=!!vars.sel && (vars.sel.tn || vars.sel.m) !== ''"
+                          - component: div
+                            config:
+                              content: "=vars.sel ? 'Raum: ' + vars.sel.r : ''"
+                              visible: "=!!vars.sel && !!vars.sel.r"
+                          - component: div
+                            config:
+                              content: "=vars.sel ? vars.sel.c : ''"
+                              visible: "=!!vars.sel && vars.sel.c !== ''"
+                              style:
+                                font-weight: 600
+                          - component: div
+                            config:
+                              content: "=vars.sel ? 'Ursprünglich: ' + vars.sel.o : ''"
+                              visible: "=!!vars.sel && vars.sel.o !== ''"
+                          - component: div
+                            config:
+                              content: "=vars.sel ? vars.sel.n : ''"
+                              visible: "=!!vars.sel && vars.sel.n !== ''"
+                              style:
+                                font-style: italic
+                    - component: div
+                      config:
+                        class: sm-legend
+                      slots:
+                        default:
+                          - component: span
+                            config:
+                              class: lg-chg
+                              content: Vertretung / Raum
+                          - component: span
+                            config:
+                              class: lg-x
+                              content: Entfall
+                          - component: span
+                            config:
+                              class: lg-sp
+                              content: Sonderstunde
+                          - component: span
+                            config:
+                              content: Stunde antippen für Details
+
+  # ------------------------------------------------------------------ Arbeiten & Schultermine
+  # show = exams (nur Arbeiten), events (nur Schultermine) oder both (beides untereinander)
+  sm_arbeiten:
+    component: f7-card
+    props:
+      parameters:
+        - name: kind
+          label: Kind (Item-Kürzel)
+          description: Teil der Item-Namen, z. B. Kind1 für SM_Kind1_ArbeitenWidget
+          type: TEXT
+          default: Kind1
+          required: true
+        - name: title
+          label: Titel
+          description: Leer lassen für "Arbeiten & Tests" bzw. "Schultermine"
+          type: TEXT
+        - name: max
+          label: Maximale Anzahl
+          type: INTEGER
+          default: "12"
+        - name: show
+          label: Anzeigen
+          type: TEXT
+          default: both
+          limitToOptions: true
+          options:
+            - value: both
+              label: Arbeiten und Schultermine
+            - value: exams
+              label: Nur Arbeiten & Tests
+            - value: events
+              label: Nur Schultermine
+    config:
+      stylesheet: |
+        .sm-title{font-size:17px;font-weight:600;padding:12px 14px 4px}
+        .sm-body{padding:2px 12px 12px}
+        .sm-it{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid rgba(127,127,127,.2)}
+        .sm-it:last-child{border-bottom:0}
+        .sm-dt{width:48px;flex:none;text-align:center;font-size:12px;opacity:.75;padding-top:1px}
+        .sm-dt b{display:block;font-size:15px;opacity:1}
+        .sm-bd{flex:1;min-width:0}
+        .sm-tl{font-weight:600;font-size:14.5px;line-height:1.3}
+        .sm-tag{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:9px;margin-right:6px;color:#fff;background:#8e8e93;vertical-align:1px}
+        .sm-me{font-size:12px;opacity:.75;margin-top:1px}
+        .sm-me.near{color:#e08600;opacity:1;font-weight:600}
+        .sm-me.soon{color:#ff3b30;opacity:1;font-weight:700}
+        .sm-nt{font-size:12.5px;margin-top:2px;white-space:pre-line}
+        .sm-sh{font-size:12px;text-transform:uppercase;letter-spacing:.06em;opacity:.65;margin:14px 0 2px}
+        .sm-empty{opacity:.6;font-size:13px;padding:6px 0}
+    slots:
+      default:
+        - component: oh-context
+          config:
+            constants:
+              n: "='SM_' + props.kind + '_ArbeitenWidget'"
+            functions:
+              d: "=(s) => (s && s.startsWith && s.startsWith('{')) ? JSON.parse(s) : ({exams: [], events: []})"
+          slots:
+            default:
+              - component: div
+                config:
+                  class: sm-title
+                  content: "=props.title || (props.show === 'events' ? 'Schultermine' : 'Arbeiten & Tests')"
+              - component: div
+                config:
+                  class: sm-body
+                slots:
+                  default:
+                    - component: div
+                      config:
+                        class: sm-empty
+                        content: Keine Arbeiten oder Tests eingetragen
+                        visible: "=props.show !== 'events' && fn.d(items[const.n].state).exams.length === 0"
+                    - component: oh-repeater
+                      config:
+                        for: x
+                        sourceType: array
+                        fragment: true
+                        in: "=props.show === 'events' ? [] : fn.d(items[const.n].state).exams.slice(0, Number(props.max) || 12)"
+                      slots:
+                        default:
+                          - component: div
+                            config:
+                              class: sm-it
+                            slots:
+                              default:
+                                - component: div
+                                  config:
+                                    class: sm-dt
+                                  slots:
+                                    default:
+                                      - component: b
+                                        config:
+                                          content: =loop.x.wd
+                                      - component: Content
+                                        config:
+                                          text: =loop.x.dm
+                                - component: div
+                                  config:
+                                    class: sm-bd
+                                  slots:
+                                    default:
+                                      - component: div
+                                        config:
+                                          class: sm-tl
+                                        slots:
+                                          default:
+                                            - component: span
+                                              config:
+                                                class: sm-tag
+                                                content: =loop.x.type
+                                                visible: =loop.x.type !== ''
+                                                style:
+                                                  background: "=loop.x.color !== '' ? loop.x.color : '#8e8e93'"
+                                                  color: "=loop.x.tc || '#ffffff'"
+                                            - component: Content
+                                              config:
+                                                text: =loop.x.s
+                                      - component: div
+                                        config:
+                                          class: "='sm-me ' + loop.x.lvl"
+                                          content: "=loop.x.when + (loop.x.p !== '' ? ' · ' + loop.x.p : '')"
+                                      - component: div
+                                        config:
+                                          class: sm-nt
+                                          content: =loop.x.n
+                                          visible: =loop.x.n !== ''
+                    - component: div
+                      config:
+                        class: sm-sh
+                        content: Schultermine
+                        visible: "=(props.show || 'both') === 'both' && fn.d(items[const.n].state).events.length > 0"
+                    - component: div
+                      config:
+                        class: sm-empty
+                        content: Keine Schultermine eingetragen
+                        visible: "=props.show === 'events' && fn.d(items[const.n].state).events.length === 0"
+                    - component: oh-repeater
+                      config:
+                        for: e
+                        sourceType: array
+                        fragment: true
+                        in: "=props.show === 'exams' ? [] : fn.d(items[const.n].state).events.slice(0, Number(props.max) || 12)"
+                      slots:
+                        default:
+                          - component: div
+                            config:
+                              class: sm-it
+                            slots:
+                              default:
+                                - component: div
+                                  config:
+                                    class: sm-dt
+                                  slots:
+                                    default:
+                                      - component: b
+                                        config:
+                                          content: =loop.e.wd
+                                      - component: Content
+                                        config:
+                                          text: =loop.e.dm
+                                - component: div
+                                  config:
+                                    class: sm-bd
+                                  slots:
+                                    default:
+                                      - component: div
+                                        config:
+                                          class: sm-tl
+                                        slots:
+                                          default:
+                                            - component: span
+                                              config:
+                                                class: sm-tag
+                                                content: =loop.e.cat
+                                                visible: "=!!loop.e.cat"
+                                                style:
+                                                  background: "=loop.e.cc || '#8e8e93'"
+                                                  color: "=loop.e.ctc || '#ffffff'"
+                                            - component: Content
+                                              config:
+                                                text: =loop.e.s
+                                      - component: div
+                                        config:
+                                          class: sm-me
+                                          content: "=loop.e.time + (loop.e.loc ? ' · ' + loop.e.loc : '')"
+                                      - component: div
+                                        config:
+                                          class: sm-me
+                                          content: "='Organisation: ' + loop.e.org"
+                                          visible: "=!!loop.e.org"
+                                      - component: div
+                                        config:
+                                          class: sm-nt
+                                          content: =loop.e.n
+                                          visible: "=!!loop.e.n"
+
+  # ------------------------------------------------------------------ Hausaufgaben
+  sm_hausaufgaben:
+    component: f7-card
+    props:
+      parameters:
+        - name: kind
+          label: Kind (Item-Kürzel)
+          description: Teil der Item-Namen, z. B. Kind1 für SM_Kind1_HausaufgabenWidget
+          type: TEXT
+          default: Kind1
+          required: true
+        - name: title
+          label: Titel
+          type: TEXT
+          default: Hausaufgaben
+        - name: days
+          label: Anzahl Tage
+          description: Wie viele Tage mit Hausaufgaben angezeigt werden
+          type: INTEGER
+          default: "7"
+    config:
+      stylesheet: |
+        .sm-title{font-size:17px;font-weight:600;padding:12px 14px 4px}
+        .sm-body{padding:2px 12px 12px}
+        .sm-hd{margin-bottom:10px}
+        .sm-hh{font-weight:600;font-size:14px;margin:4px 0 4px}
+        .sm-hh small{font-weight:400;opacity:.65;margin-left:8px;font-size:12px}
+        .sm-hd.fresh .sm-hh{color:var(--f7-theme-color)}
+        .sm-hi{border-radius:8px;padding:6px 9px;margin-bottom:4px;background:rgba(127,127,127,.12)}
+        .sm-hs{font-weight:600;font-size:13.5px}
+        .sm-ht{font-size:13.5px;white-space:pre-line;line-height:1.35;margin-top:1px}
+        .sm-empty{opacity:.6;font-size:13px;padding:6px 0}
+    slots:
+      default:
+        - component: oh-context
+          config:
+            constants:
+              n: "='SM_' + props.kind + '_HausaufgabenWidget'"
+            functions:
+              d: "=(s) => (s && s.startsWith && s.startsWith('{')) ? JSON.parse(s) : ({days: []})"
+          slots:
+            default:
+              - component: div
+                config:
+                  class: sm-title
+                  content: =props.title || 'Hausaufgaben'
+              - component: div
+                config:
+                  class: sm-body
+                slots:
+                  default:
+                    - component: div
+                      config:
+                        class: sm-empty
+                        content: Keine Hausaufgaben in den letzten drei Wochen
+                        visible: =fn.d(items[const.n].state).days.length === 0
+                    - component: oh-repeater
+                      config:
+                        for: d
+                        sourceType: array
+                        fragment: true
+                        in: "=fn.d(items[const.n].state).days.slice(0, Number(props.days) || 7)"
+                      slots:
+                        default:
+                          - component: div
+                            config:
+                              class: "=loop.d.fresh ? 'sm-hd fresh' : 'sm-hd'"
+                            slots:
+                              default:
+                                - component: div
+                                  config:
+                                    class: sm-hh
+                                  slots:
+                                    default:
+                                      - component: Content
+                                        config:
+                                          text: =loop.d.label
+                                      - component: small
+                                        config:
+                                          content: =loop.d.rel
+                                - component: oh-repeater
+                                  config:
+                                    for: h
+                                    sourceType: array
+                                    fragment: true
+                                    in: =loop.d.items
+                                  slots:
+                                    default:
+                                      - component: div
+                                        config:
+                                          class: sm-hi
+                                        slots:
+                                          default:
+                                            - component: div
+                                              config:
+                                                class: sm-hs
+                                                content: =loop.h.s
+                                                visible: =loop.h.s !== ''
+                                            - component: div
+                                              config:
+                                                class: sm-ht
+                                                content: =loop.h.t
+
+  # ------------------------------------------------------------------ Elternbriefe (Liste)
+  # Liste wie in der Schulmanager-App; Antippen öffnet den Brief als Pop-up (Widget sm_elternbrief).
+  # Liest nur – in Schulmanager wird dadurch nichts als gelesen markiert.
+  sm_elternbriefe:
+    component: f7-card
+    props:
+      parameters:
+        - name: item
+          label: Item mit den Elternbriefen
+          description: Item am Bridge-Channel lettersWidget
+          type: TEXT
+          context: item
+          default: SM_ElternbriefeWidget
+          required: true
+        - name: title
+          label: Titel
+          type: TEXT
+        - name: max
+          label: Maximale Anzahl
+          type: INTEGER
+          default: "10"
+    config:
+      stylesheet: |
+        .sm-title{font-size:17px;font-weight:600;padding:12px 14px 4px;display:flex;align-items:center;gap:8px}
+        .sm-badge{font-size:11px;font-weight:700;color:#fff;background:#ff3b30;border-radius:9px;padding:1px 7px}
+        .sm-body{padding:0 12px 10px}
+        .sm-head{display:flex;gap:10px;font-size:12px;font-weight:600;opacity:.65;padding:4px 0 6px;border-bottom:2px solid rgba(127,127,127,.25)}
+        .sm-c1{width:64px;flex:none}
+        .sm-c2{flex:1;min-width:0}
+        .sm-c3{width:52px;flex:none;text-align:right}
+        .sm-row.link{display:flex;gap:10px;padding:9px 0;align-items:flex-start;justify-content:flex-start;text-align:left;color:inherit;width:100%;height:auto;line-height:1.3;border-bottom:1px solid rgba(127,127,127,.2)}
+        .sm-dt{font-size:13px;line-height:1.35}
+        .sm-dt span{display:block;opacity:.65;font-size:12px}
+        .sm-tl{font-size:14px}
+        .sm-unread .sm-tl{font-weight:700}
+        .sm-me{font-size:12px;margin-top:2px}
+        .sm-me.warn{color:#e08600;font-weight:600}
+        .sm-me.alert{color:#ff3b30;font-weight:600}
+        .sm-ic{color:#34a853}
+        .sm-unread .sm-ic{color:var(--f7-theme-color)}
+        .sm-empty{opacity:.6;font-size:13px;padding:8px 0}
+    slots:
+      default:
+        - component: oh-context
+          config:
+            functions:
+              d: "=(s) => (s && s.startsWith && s.startsWith('{')) ? JSON.parse(s) : ({letters: [], unread: 0})"
+          slots:
+            default:
+              - component: div
+                config:
+                  class: sm-title
+                slots:
+                  default:
+                    - component: Content
+                      config:
+                        text: =props.title || 'Elternbriefe'
+                    - component: span
+                      config:
+                        class: sm-badge
+                        content: "=fn.d(items[props.item].state).unread + ' ungelesen'"
+                        visible: "=fn.d(items[props.item].state).unread > 0"
+              - component: div
+                config:
+                  class: sm-body
+                slots:
+                  default:
+                    - component: div
+                      config:
+                        class: sm-head
+                        visible: "=fn.d(items[props.item].state).letters.length > 0"
+                      slots:
+                        default:
+                          - component: div
+                            config:
+                              class: sm-c1
+                              content: Versendet
+                          - component: div
+                            config:
+                              class: sm-c2
+                              content: Titel
+                          - component: div
+                            config:
+                              class: sm-c3
+                              content: Gelesen
+                    - component: div
+                      config:
+                        class: sm-empty
+                        content: Keine Elternbriefe
+                        visible: "=fn.d(items[props.item].state).letters.length === 0"
+                    - component: oh-repeater
+                      config:
+                        for: l
+                        sourceType: array
+                        fragment: true
+                        in: "=fn.d(items[props.item].state).letters.slice(0, Number(props.max) || 10)"
+                      slots:
+                        default:
+                          - component: div
+                            config:
+                              class: "=loop.l.u ? 'sm-unread' : ''"
+                            slots:
+                              default:
+                                - component: oh-link
+                                  config:
+                                    class: sm-row
+                                    action: popup
+                                    actionModal: widget:sm_elternbrief
+                                    actionModalConfig: "=({item: props.item, id: loop.l.id})"
+                                  slots:
+                                    default:
+                                      - component: div
+                                        config:
+                                          class: sm-c1 sm-dt
+                                        slots:
+                                          default:
+                                            - component: Content
+                                              config:
+                                                text: "=loop.l.dt + ','"
+                                            - component: span
+                                              config:
+                                                content: =loop.l.tm
+                                      - component: div
+                                        config:
+                                          class: sm-c2
+                                        slots:
+                                          default:
+                                            - component: div
+                                              config:
+                                                class: sm-tl
+                                                content: =loop.l.t
+                                            - component: div
+                                              config:
+                                                class: "=loop.l.dlx ? 'sm-me alert' : 'sm-me warn'"
+                                                content: =loop.l.dl
+                                                visible: "=!!loop.l.dl"
+                                            - component: div
+                                              config:
+                                                class: sm-me
+                                                content: "=(loop.l.who ? loop.l.who + ' · ' : '') + (loop.l.att.length > 0 ? '📎 ' + loop.l.att.length : '')"
+                                                visible: "=!!loop.l.who || loop.l.att.length > 0"
+                                                style:
+                                                  opacity: 0.7
+                                      - component: div
+                                        config:
+                                          class: sm-c3
+                                        slots:
+                                          default:
+                                            - component: f7-icon
+                                              config:
+                                                class: sm-ic
+                                                f7: "=loop.l.u ? 'envelope_badge_fill' : 'envelope_open'"
+                                                size: 22
+
+  # ------------------------------------------------------------------ Elternbrief (Pop-up)
+  # Wird von sm_elternbriefe geöffnet (props item und id). Zeigt den Brief; markiert nichts als gelesen.
+  sm_elternbrief:
+    component: f7-block
+    props:
+      parameters:
+        - name: item
+          label: Item mit den Elternbriefen
+          type: TEXT
+          context: item
+          default: SM_ElternbriefeWidget
+        - name: id
+          label: Brief-ID
+          type: TEXT
+    config:
+      stylesheet: |
+        .sm-h{font-size:22px;font-weight:700;line-height:1.25;margin:4px 0 6px;overflow-wrap:anywhere;hyphens:auto}
+        .sm-meta{font-size:13px;opacity:.7;margin-bottom:4px}
+        .sm-dl{font-size:13px;font-weight:600;color:#e08600;margin-bottom:4px}
+        .sm-dl.alert{color:#ff3b30}
+        .sm-unr{display:inline-block;font-size:11px;font-weight:700;color:#fff;background:var(--f7-theme-color);border-radius:9px;padding:1px 8px;margin-left:6px;vertical-align:1px}
+        .sm-text{font-size:15px;line-height:1.55;white-space:pre-line;overflow-wrap:anywhere;margin-top:14px}
+        .sm-att{margin-top:16px;padding:10px 12px;border-radius:8px;background:rgba(127,127,127,.12);font-size:13.5px;line-height:1.5}
+        .sm-att b{display:block;margin-bottom:2px}
+        .sm-note{margin-top:14px;font-size:12px;opacity:.6}
+      style:
+        max-width: 760px
+        margin-left: auto
+        margin-right: auto
+    slots:
+      default:
+        - component: oh-context
+          config:
+            functions:
+              l: "=(s, id) => ((s && s.startsWith && s.startsWith('{')) ? JSON.parse(s).letters : []).find((x) => x.id == id) || ({t: 'Brief nicht gefunden', txt: '', att: [], d: '', tm: '', dl: '', u: false, pending: false})"
+          slots:
+            default:
+              - component: div
+                config:
+                  class: sm-h
+                  content: =fn.l(items[props.item].state, props.id).t
+              - component: div
+                config:
+                  class: sm-meta
+                slots:
+                  default:
+                    - component: Content
+                      config:
+                        text: "=fn.l(items[props.item].state, props.id).d ? 'Versendet am ' + fn.l(items[props.item].state, props.id).d + ', ' + fn.l(items[props.item].state, props.id).tm + ' Uhr' : ''"
+                    - component: span
+                      config:
+                        class: sm-unr
+                        content: ungelesen
+                        visible: =fn.l(items[props.item].state, props.id).u
+              - component: div
+                config:
+                  class: "=fn.l(items[props.item].state, props.id).dlx ? 'sm-dl alert' : 'sm-dl'"
+                  content: "=fn.l(items[props.item].state, props.id).dl + ' – Rückmeldung in der Schulmanager-App'"
+                  visible: "=!!fn.l(items[props.item].state, props.id).dl"
+              - component: div
+                config:
+                  class: sm-text
+                  content: "=fn.l(items[props.item].state, props.id).locked ? 'Dieser Brief ist noch ungelesen. Bitte zuerst in der Schulmanager-App lesen und bestätigen – danach erscheint der Text auch hier.' : (fn.l(items[props.item].state, props.id).pending ? 'Der Text ist noch nicht verfügbar. Er wird beim nächsten Abruf erneut geladen – bis dahin bitte in der Schulmanager-App lesen.' : (fn.l(items[props.item].state, props.id).txt || '(kein Text – siehe Anhang)'))"
+              - component: div
+                config:
+                  class: sm-att
+                  visible: "=fn.l(items[props.item].state, props.id).att.length > 0"
+                slots:
+                  default:
+                    - component: b
+                      config:
+                        content: Anhänge
+                    - component: div
+                      config:
+                        content: "=fn.l(items[props.item].state, props.id).att.join(', ')"
+                    - component: div
+                      config:
+                        content: Anhänge lassen sich nur in der Schulmanager-App öffnen.
+                        style:
+                          opacity: 0.7
+                          font-size: 12px
+              - component: div
+                config:
+                  class: sm-note
+                  content: Das Öffnen hier markiert den Brief in Schulmanager nicht als gelesen.

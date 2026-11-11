@@ -1,0 +1,25 @@
+// Schulmanager Online – Beispielregeln (optional)
+// Die Trigger-Channels lösen erst ab dem zweiten Abruf aus, also nicht beim Start.
+
+rule "Schulmanager: Stundenplan Kind 1 geändert"
+when
+    Channel "schulmanager:student:konto:kind1:schedule#changed" triggered
+then
+    logInfo("schulmanager", "Stundenplanänderung Kind 1:\n" + SM_Kind1_Aenderungen.state.toString)
+    // Beispiel Push über myopenHAB:
+    // sendBroadcastNotification("Stundenplan Kind 1: " + SM_Kind1_Aenderungen.state.toString)
+end
+
+rule "Schulmanager: neue Hausaufgabe Kind 1"
+when
+    Channel "schulmanager:student:konto:kind1:homework#new" triggered
+then
+    logInfo("schulmanager", "Neue Hausaufgabe Kind 1: " + receivedEvent)
+end
+
+rule "Schulmanager: neue Arbeit Kind 1"
+when
+    Channel "schulmanager:student:konto:kind1:exams#new" triggered
+then
+    logInfo("schulmanager", "Neue Arbeit Kind 1: " + receivedEvent)
+end

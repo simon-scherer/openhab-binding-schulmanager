@@ -1,0 +1,10 @@
+target/
+tools/standalone-build/build/
+tools/standalone-build/dist/
+tools/standalone-build/lib/
+*.class
+.idea/
+.vscode/
+.settings/
+.project
+.classpath

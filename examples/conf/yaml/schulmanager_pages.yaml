@@ -1,0 +1,84 @@
+# Schulmanager Online – Page je Kind (openHAB 5.2, dateibasiert)
+# Ablage: $OPENHAB_CONF/yaml/schulmanager_pages.yaml
+# Für ein weiteres Kind: Block "schule_kind1" kopieren, uid/label ändern und kind: Kind2 setzen.
+version: 1
+
+pages:
+
+  schule_kind1:
+    component: oh-layout-page
+    config:
+      label: Schule Kind 1
+      icon: iconify:mdi:bag-personal
+      sidebar: true
+      order: "50"
+    slots:
+      default:
+        - component: oh-block
+          config: {}
+          slots:
+            default:
+              - component: oh-grid-row
+                config: {}
+                slots:
+                  default:
+                    - component: oh-grid-col
+                      config:
+                        width: "100"
+                      slots:
+                        default:
+                          - component: widget:sm_status
+                            config:
+                              kind: Kind1
+              - component: oh-grid-row
+                config: {}
+                slots:
+                  default:
+                    - component: oh-grid-col
+                      config:
+                        width: "100"
+                      slots:
+                        default:
+                          - component: widget:sm_stundenplan
+                            config:
+                              kind: Kind1
+              # Arbeiten, Schultermine, Elternbriefe: ab 1024 px Breite nebeneinander,
+              # darunter (Tablet hochkant) Arbeiten + Hausaufgaben nebeneinander, Handy untereinander
+              - component: oh-grid-row
+                config: {}
+                slots:
+                  default:
+                    - component: oh-grid-col
+                      config:
+                        width: "100"
+                        medium: "50"
+                        large: "33"
+                      slots:
+                        default:
+                          - component: widget:sm_arbeiten
+                            config:
+                              kind: Kind1
+                              show: exams
+                    - component: oh-grid-col
+                      config:
+                        width: "100"
+                        medium: "50"
+                        large: "33"
+                      slots:
+                        default:
+                          - component: widget:sm_arbeiten
+                            config:
+                              kind: Kind1
+                              show: events
+                              title: Schultermine
+                    - component: oh-grid-col
+                      config:
+                        width: "100"
+                        large: "33"
+                      slots:
+                        default:
+                          # Elternbriefe gelten für das ganze Konto (alle Kinder).
+                          # Statt Hausaufgaben; wer die doch braucht: widget:sm_hausaufgaben mit kind: Kind1
+                          - component: widget:sm_elternbriefe
+                            config:
+                              item: SM_ElternbriefeWidget

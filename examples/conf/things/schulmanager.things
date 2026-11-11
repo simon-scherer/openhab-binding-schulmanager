@@ -1,0 +1,19 @@
+// Schulmanager Online – Konto (Bridge) und Kinder
+// 1. Zuerst nur die Bridge anlegen (Kind-Zeile auskommentiert lassen), speichern.
+// 2. Nach dem Login stehen in der Bridge unter "Eigenschaften" -> students die IDs der Kinder.
+// 3. Dann je Kind eine Thing-Zeile mit der passenden studentId aktivieren.
+
+Bridge schulmanager:account:konto "Schulmanager Konto" [
+    username="eltern@example.de",
+    password="GEHEIM",
+    // twoFactorCode="123456",   // nur falls die Bridge nach einem Zwei-Faktor-Code fragt, danach wieder entfernen
+    refreshInterval=60,
+    scheduleWeeks=2,
+    teacherDisplay="lastname",  // Lehrkräfte: "lastname" (Nachname), "name" (Vor- und Nachname), "abbreviation" (Kürzel)
+    subjectDisplay="name",      // Fächer: "name" (Geographie) oder "abbreviation" (Geo)
+    subjectNames="Ev=Religion, Swd=Sport, Sw=Sport",  // eigene Namen je Fach (Kürzel oder offizieller Name = Anzeige)
+    lettersLoadUnread=false     // true = auch Text ungelesener Elternbriefe laden (siehe README)
+] {
+    // Thing student kind1 "Schulmanager Kind 1" [ studentId="1234567" ]
+    // Thing student kind2 "Schulmanager Kind 2" [ studentId="7654321" ]
+}

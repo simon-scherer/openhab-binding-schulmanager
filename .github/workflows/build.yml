@@ -1,0 +1,98 @@
+name: Build
+
+# Builds the binding with Maven inside an openhab-addons checkout, i.e. with the same parent POM, bnd, null
+# analysis, static code analysis (SAT) and formatting rules as an official add-on.
+# A tag v* additionally publishes a GitHub release with the JAR.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  OPENHAB_ADDONS_REF: '5.2.1'
+  BUNDLE: org.openhab.binding.schulmanager
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout binding
+        uses: actions/checkout@v4
+        with:
+          path: binding
+
+      - name: Checkout openhab-addons ${{ env.OPENHAB_ADDONS_REF }}
+        uses: actions/checkout@v4
+        with:
+          repository: openhab/openhab-addons
+          ref: ${{ env.OPENHAB_ADDONS_REF }}
+          path: openhab-addons
+          fetch-depth: 1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: binding/bundles/*/pom.xml
+
+      - name: Add bundle to openhab-addons
+        run: |
+          cp -r binding/bundles/$BUNDLE openhab-addons/bundles/
+          sed -i "0,/<modules>/s||<modules>\n    <module>$BUNDLE</module>|" openhab-addons/bundles/pom.xml
+          grep -n "$BUNDLE" openhab-addons/bundles/pom.xml
+
+      - name: Formatting (spotless)
+        working-directory: openhab-addons
+        run: |
+          mvn -B -ntp spotless:apply -pl :$BUNDLE
+          diff -ru ../binding/bundles/$BUNDLE bundles/$BUNDLE -x target > ../spotless.diff || true
+          if [ -s ../spotless.diff ]; then
+            echo "::warning::Formatting differs from the openHAB rules, see artifact spotless-diff"
+          fi
+
+      - name: Build with checks
+        working-directory: openhab-addons
+        run: mvn -B -ntp clean install -pl :$BUNDLE -am -DskipTests=false
+
+      - name: Collect results
+        if: always()
+        run: |
+          mkdir -p out
+          cp openhab-addons/bundles/$BUNDLE/target/$BUNDLE-*.jar out/ 2>/dev/null || true
+          rm -f out/*-sources.jar out/*-javadoc.jar
+          cp -r openhab-addons/bundles/$BUNDLE/target/code-analysis out/ 2>/dev/null || true
+          cp spotless.diff out/ 2>/dev/null || true
+          ls -la out
+
+      - name: Upload JAR
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jar
+          path: out/*.jar
+          if-no-files-found: ignore
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            out/code-analysis
+            out/spotless.diff
+          if-no-files-found: ignore
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.jar
+          generate_release_notes: true

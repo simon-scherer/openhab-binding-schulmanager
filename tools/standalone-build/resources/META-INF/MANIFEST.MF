@@ -1,0 +1,20 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-SymbolicName: org.openhab.binding.schulmanager
+Bundle-Name: openHAB Add-ons :: Bundles :: Schulmanager Online Binding
+Bundle-Vendor: openHAB.org
+Bundle-Version: 5.2.1.202611051800
+Bundle-License: https://www.eclipse.org/legal/epl-2.0/
+Bundle-Description: Schulmanager Online: timetable, exams, school events, homework, parent letters
+Import-Package: com.google.gson;version="[2.8,3)",
+ javax.crypto,
+ javax.crypto.spec,
+ org.openhab.core;version="[5.0,6)",
+ org.openhab.core.i18n;version="[5.0,6)",
+ org.openhab.core.library.types;version="[5.0,6)",
+ org.openhab.core.thing;version="[5.0,6)",
+ org.openhab.core.thing.binding;version="[5.0,6)",
+ org.openhab.core.types;version="[5.0,6)",
+ org.slf4j;version="[1.7,3)"
+Require-Capability: osgi.ee;filter:="(&(osgi.ee=JavaSE)(version>=21))"
+Service-Component: OSGI-INF/org.openhab.binding.schulmanager.internal.SchulmanagerHandlerFactory.xml
