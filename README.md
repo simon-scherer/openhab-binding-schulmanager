@@ -42,7 +42,7 @@ cp -r bundles/org.openhab.binding.schulmanager openhab-addons/bundles/
 cd openhab-addons && mvn spotless:apply install -pl :org.openhab.binding.schulmanager
 ```
 
-Without Maven, `tools/standalone-build/build.sh` compiles the bundle with plain `javac` against API stubs (JDK 21, gson and slf4j-api jars in `tools/standalone-build/lib`).
+Without Maven, `tools/standalone-build/build.sh` compiles the bundle with plain `javac` against API stubs (JDK 21; gson, slf4j-api and the Jetty 9.4 jars `jetty-client`, `jetty-http`, `jetty-io`, `jetty-util` from an openHAB installation in `tools/standalone-build/lib`).
 
 ## Privacy
 

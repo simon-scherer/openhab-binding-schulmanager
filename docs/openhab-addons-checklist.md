@@ -3,10 +3,9 @@
 The bundle already follows the layout of openhab-addons and builds there with all checks
 (`.github/workflows/build.yml`: 0 SAT errors). Open points before a pull request:
 
-- [ ] Annotate the `model` package and `SchulmanagerClient` with `@NonNullByDefault` and resolve the
-      remaining null warnings (currently 9 SAT warnings plus "potential null pointer access" warnings).
-- [ ] Use the shared Jetty `HttpClient` from `HttpClientFactory` instead of the JDK `java.net.http.HttpClient`
-      (reviewers usually ask for this).
+- [x] All classes annotated with `@NonNullByDefault`, nullable fields marked `@Nullable`.
+- [x] The shared Jetty `HttpClient` from `HttpClientFactory` is used (with a larger response buffer and handling
+      of HTTP 401 without `WWW-Authenticate`, which Jetty otherwise reports as protocol violation).
 - [ ] Unit tests for the parsers (`DataParser`, `Letters`, `WidgetJson`) with anonymized sample responses.
 - [ ] Decide on the text channels: German content is fine for a German-only service, but discuss it in the PR.
 - [ ] Generate the i18n file with `mvn i18n:generate-default-translations` and check it against

@@ -14,13 +14,17 @@ package org.openhab.binding.schulmanager.internal.model;
 
 import java.time.LocalDate;
 
+import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
+
 /**
  * A homework entry from the class book (date of the lesson it was given in, subject, text).
  *
  * @author Simon Scherer - Initial contribution
  */
+@NonNullByDefault
 public class Homework {
-    public LocalDate date;
+    public @Nullable LocalDate date;
     public String subject = "";
     /** Subject as delivered by Schulmanager (used for the key). */
     public String keySubject = "";

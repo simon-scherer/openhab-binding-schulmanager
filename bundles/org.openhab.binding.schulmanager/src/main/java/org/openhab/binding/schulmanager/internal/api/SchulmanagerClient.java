@@ -12,14 +12,8 @@
  */
 package org.openhab.binding.schulmanager.internal.api;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,9 +21,22 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
+import org.eclipse.jetty.client.HttpClient;
+import org.eclipse.jetty.client.HttpResponseException;
+import org.eclipse.jetty.client.api.ContentResponse;
+import org.eclipse.jetty.client.api.Request;
+import org.eclipse.jetty.client.util.FutureResponseListener;
+import org.eclipse.jetty.client.util.StringContentProvider;
+import org.eclipse.jetty.http.HttpHeader;
+import org.eclipse.jetty.http.HttpMethod;
 import org.openhab.binding.schulmanager.internal.api.SchulmanagerException.AuthException;
 import org.openhab.binding.schulmanager.internal.api.SchulmanagerException.ModuleUnavailableException;
 import org.openhab.binding.schulmanager.internal.api.SchulmanagerException.TwoFactorRequiredException;
@@ -58,50 +65,64 @@ import com.google.gson.JsonPrimitive;
  * <li>All data via POST /api/calls (batch of module/endpoint requests) with the bearer token</li>
  * </ol>
  *
+ * Uses the shared HTTP client of openHAB. The session is the bearer token, no cookies are needed.
+ *
  * @author Simon Scherer - Initial contribution
  */
+@NonNullByDefault
 public class SchulmanagerClient {
 
-    private static final String BASE = "https://login.schulmanager-online.de";
-    private static final String LOGIN_URL = BASE + "/api/login";
-    private static final String GET_SALT_URL = BASE + "/api/get-salt";
-    private static final String DEVICE_LOGIN_URL = BASE + "/api/login-with-user-device";
-    private static final String DELETE_DEVICE_URL = BASE + "/api/delete-user-device";
-    private static final String CALLS_URL = BASE + "/api/calls";
+    public static final String DEFAULT_BASE_URL = "https://login.schulmanager-online.de";
+    private static final String LOGIN_PATH = "/api/login";
+    private static final String GET_SALT_PATH = "/api/get-salt";
+    private static final String DEVICE_LOGIN_PATH = "/api/login-with-user-device";
+    private static final String DELETE_DEVICE_PATH = "/api/delete-user-device";
+    private static final String CALLS_PATH = "/api/calls";
     private static final String USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
     private static final String DUMMY_BUNDLE_VERSION = "0000000000";
-    private static final Duration TIMEOUT = Duration.ofSeconds(30);
+    private static final long TIMEOUT_SECONDS = 30;
+    /** The script bundles read for the bundleVersion are larger than Jetty's default buffer of 2 MB. */
+    private static final int MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+
+    /** Status and body of one HTTP exchange. */
+    private record Response(int status, String body) {
+    }
 
     private final Logger logger = LoggerFactory.getLogger(SchulmanagerClient.class);
     private final HttpClient http;
+    private final String base;
     private final String username;
     private final String password;
 
-    private Integer institutionId;
-    private Integer userId;
-    private JsonObject userDevice;
-    private String twoFactorCode;
+    private @Nullable Integer institutionId;
+    private @Nullable Integer userId;
+    private @Nullable JsonObject userDevice;
+    private @Nullable String twoFactorCode;
 
-    private String token;
-    private String bundleVersion;
+    private @Nullable String token;
+    private @Nullable String bundleVersion;
     private final List<StudentInfo> students = new ArrayList<>();
-    private JsonArray multipleAccounts;
+    private @Nullable JsonArray multipleAccounts;
     private boolean deviceRevoked;
     private final Set<String> unavailableModules = new HashSet<>();
 
-    public SchulmanagerClient(HttpClient http, String username, String password, Integer institutionId, Integer userId,
-            JsonObject userDevice, String twoFactorCode) {
+    public SchulmanagerClient(HttpClient http, String username, String password, @Nullable Integer institutionId,
+            @Nullable Integer userId, @Nullable JsonObject userDevice, @Nullable String twoFactorCode) {
+        this(http, DEFAULT_BASE_URL, username, password, institutionId, userId, userDevice, twoFactorCode);
+    }
+
+    /** With another server address, for tests. */
+    SchulmanagerClient(HttpClient http, String base, String username, String password,
+            @Nullable Integer institutionId, @Nullable Integer userId, @Nullable JsonObject userDevice,
+            @Nullable String twoFactorCode) {
         this.http = http;
+        this.base = base;
         this.username = username;
         this.password = password;
         this.institutionId = institutionId;
         this.userId = userId;
         this.userDevice = userDevice;
         this.twoFactorCode = twoFactorCode;
-    }
-
-    public static HttpClient createHttpClient() {
-        return HttpClient.newBuilder().connectTimeout(TIMEOUT).followRedirects(HttpClient.Redirect.NORMAL).build();
     }
 
     // ------------------------------------------------------------------ getters
@@ -114,15 +135,15 @@ public class SchulmanagerClient {
         return new ArrayList<>(students);
     }
 
-    public Integer getInstitutionId() {
+    public @Nullable Integer getInstitutionId() {
         return institutionId;
     }
 
-    public Integer getUserId() {
+    public @Nullable Integer getUserId() {
         return userId;
     }
 
-    public synchronized JsonObject getUserDevice() {
+    public synchronized @Nullable JsonObject getUserDevice() {
         return userDevice;
     }
 
@@ -130,37 +151,39 @@ public class SchulmanagerClient {
         return deviceRevoked;
     }
 
-    public synchronized JsonArray getMultipleAccounts() {
+    public synchronized @Nullable JsonArray getMultipleAccounts() {
         return multipleAccounts;
     }
 
     // ------------------------------------------------------------------ login
 
     public synchronized void login() throws SchulmanagerException {
-        if (userDevice != null && loginWithDevice()) {
+        JsonObject device = userDevice;
+        if (device != null && loginWithDevice(device)) {
             return;
         }
         loginWithPassword();
     }
 
-    private boolean loginWithDevice() throws SchulmanagerException {
+    private boolean loginWithDevice(JsonObject device) throws SchulmanagerException {
         JsonObject body = new JsonObject();
-        body.add("device", userDevice);
+        body.add("device", device);
         body.addProperty("reason", "detected-logged-out");
-        HttpResponse<String> resp = post(DEVICE_LOGIN_URL, body, false);
-        if (resp.statusCode() == 401) {
+        Response resp = post(base + DEVICE_LOGIN_PATH, body, false);
+        if (resp.status() == 401) {
             logger.warn("Schulmanager no longer accepts the remembered device, a new two-factor code is required");
             userDevice = null;
             deviceRevoked = true;
             return false;
         }
         JsonObject data = parseObject(resp.body());
-        if (resp.statusCode() != 200 || data == null || !data.has("jwt")) {
-            throw new SchulmanagerException("Login with remembered device failed: HTTP " + resp.statusCode());
+        if (resp.status() != 200 || data == null || str(data, "jwt").isEmpty()) {
+            throw new SchulmanagerException("Login with remembered device failed: HTTP " + resp.status());
         }
         applyLoginResponse(data);
-        if (data.has("userDevice") && data.get("userDevice").isJsonObject()) {
-            userDevice = data.getAsJsonObject("userDevice");
+        JsonObject renewed = obj(data, "userDevice");
+        if (renewed != null) {
+            userDevice = renewed;
         }
         return true;
     }
@@ -177,23 +200,25 @@ public class SchulmanagerClient {
         body.addProperty("emailOrUsername", username);
         body.addProperty("password", password);
         body.addProperty("hash", hash);
+        String code = twoFactorCode;
         // Only a mobile app login returns a device; without a code this would add a device on every login
-        body.addProperty("mobileApp", twoFactorCode != null);
-        body.add("userId", userId == null ? JsonNull.INSTANCE : new JsonPrimitive(userId));
-        body.add("twoFactorCode", twoFactorCode == null ? JsonNull.INSTANCE : new JsonPrimitive(twoFactorCode));
-        body.add("institutionId", institutionId == null ? JsonNull.INSTANCE : new JsonPrimitive(institutionId));
+        body.addProperty("mobileApp", code != null);
+        body.add("userId", json(userId));
+        body.add("twoFactorCode", code == null ? JsonNull.INSTANCE : new JsonPrimitive(code));
+        body.add("institutionId", json(institutionId));
 
-        HttpResponse<String> resp = post(LOGIN_URL, body, false);
-        if (resp.statusCode() == 401) {
+        Response resp = post(base + LOGIN_PATH, body, false);
+        if (resp.status() == 401) {
             throw new AuthException("Login rejected (HTTP 401) - check e-mail and password");
         }
         JsonObject data = parseObject(resp.body());
-        if (resp.statusCode() != 200 || data == null) {
-            throw new SchulmanagerException("Login failed: HTTP " + resp.statusCode());
+        if (resp.status() != 200 || data == null) {
+            throw new SchulmanagerException("Login failed: HTTP " + resp.status());
         }
-        if (data.has("multipleAccounts") && data.get("multipleAccounts").isJsonArray()) {
-            multipleAccounts = data.getAsJsonArray("multipleAccounts");
-            logger.debug("Schulmanager account with {} schools", multipleAccounts.size());
+        JsonElement accounts = data.get("multipleAccounts");
+        if (accounts != null && accounts.isJsonArray()) {
+            multipleAccounts = accounts.getAsJsonArray();
+            logger.debug("Schulmanager account with {} schools", accounts.getAsJsonArray().size());
             return;
         }
         if (isTrue(data, "requireTwoFactorEmailCode") || isTrue(data, "requireTOTP")) {
@@ -202,14 +227,15 @@ public class SchulmanagerClient {
             twoFactorCode = null;
             throw new TwoFactorRequiredException(method);
         }
-        if (!data.has("jwt")) {
+        if (str(data, "jwt").isEmpty()) {
             throw new SchulmanagerException("Login failed: no session received");
         }
         applyLoginResponse(data);
-        if (twoFactorCode != null) {
+        if (code != null) {
             twoFactorCode = null;
-            if (data.has("userDevice") && data.get("userDevice").isJsonObject()) {
-                userDevice = data.getAsJsonObject("userDevice");
+            JsonObject device = obj(data, "userDevice");
+            if (device != null) {
+                userDevice = device;
                 deviceRevoked = false;
             }
         }
@@ -218,9 +244,9 @@ public class SchulmanagerClient {
     private String fetchSalt() throws SchulmanagerException {
         JsonObject body = new JsonObject();
         body.addProperty("emailOrUsername", username);
-        body.add("userId", userId == null ? JsonNull.INSTANCE : new JsonPrimitive(userId));
-        body.add("institutionId", institutionId == null ? JsonNull.INSTANCE : new JsonPrimitive(institutionId));
-        HttpResponse<String> resp = post(GET_SALT_URL, body, false);
+        body.add("userId", json(userId));
+        body.add("institutionId", json(institutionId));
+        Response resp = post(base + GET_SALT_PATH, body, false);
         try {
             JsonElement el = JsonParser.parseString(resp.body());
             if (el.isJsonPrimitive()) {
@@ -229,18 +255,20 @@ public class SchulmanagerClient {
         } catch (RuntimeException e) {
             // handled below
         }
-        throw new SchulmanagerException("Cannot load the salt: HTTP " + resp.statusCode());
+        throw new SchulmanagerException("Cannot load the salt: HTTP " + resp.status());
     }
 
     private void applyLoginResponse(JsonObject data) {
-        token = data.get("jwt").getAsString();
-        JsonObject user = data.has("user") && data.get("user").isJsonObject() ? data.getAsJsonObject("user")
-                : new JsonObject();
-        if (userId == null && user.has("id") && !user.get("id").isJsonNull()) {
-            userId = user.get("id").getAsInt();
+        token = str(data, "jwt");
+        JsonObject user = obj(data, "user");
+        if (user == null) {
+            user = new JsonObject();
         }
-        if (institutionId == null && user.has("institutionId") && !user.get("institutionId").isJsonNull()) {
-            institutionId = user.get("institutionId").getAsInt();
+        if (userId == null) {
+            userId = integer(user, "id");
+        }
+        if (institutionId == null) {
+            institutionId = integer(user, "institutionId");
         }
         students.clear();
         students.addAll(extractStudents(user));
@@ -254,14 +282,15 @@ public class SchulmanagerClient {
     static List<StudentInfo> extractStudents(JsonObject user) {
         List<StudentInfo> result = new ArrayList<>();
         for (JsonElement p : array(user, "associatedParents")) {
-            if (p.isJsonObject() && p.getAsJsonObject().has("student")
-                    && p.getAsJsonObject().get("student").isJsonObject()) {
-                addStudent(result, p.getAsJsonObject().getAsJsonObject("student"));
+            JsonObject student = p.isJsonObject() ? obj(p.getAsJsonObject(), "student") : null;
+            if (student != null) {
+                addStudent(result, student);
             }
         }
         if (result.isEmpty()) {
-            if (user.has("associatedStudent") && user.get("associatedStudent").isJsonObject()) {
-                addStudent(result, user.getAsJsonObject("associatedStudent"));
+            JsonObject own = obj(user, "associatedStudent");
+            if (own != null) {
+                addStudent(result, own);
             }
             for (JsonElement s : array(user, "associatedStudents")) {
                 if (s.isJsonObject()) {
@@ -273,23 +302,24 @@ public class SchulmanagerClient {
     }
 
     private static void addStudent(List<StudentInfo> list, JsonObject rec) {
-        if (!rec.has("id") || rec.get("id").isJsonNull()) {
+        String id = str(rec, "id");
+        if (id.isEmpty()) {
             return;
         }
-        Integer classId = rec.has("classId") && !rec.get("classId").isJsonNull() ? rec.get("classId").getAsInt() : null;
-        list.add(new StudentInfo(rec.get("id").getAsString(), str(rec, "firstname"), str(rec, "lastname"), classId));
+        list.add(new StudentInfo(id, str(rec, "firstname"), str(rec, "lastname"), integer(rec, "classId")));
     }
 
     /** Remove the remembered device from the Schulmanager account (on thing removal). */
     public synchronized void deleteDevice() throws SchulmanagerException {
-        if (userDevice == null) {
+        JsonObject device = userDevice;
+        if (device == null) {
             return;
         }
         JsonObject body = new JsonObject();
-        body.add("device", userDevice);
-        HttpResponse<String> resp = post(DELETE_DEVICE_URL, body, token != null);
-        if (resp.statusCode() != 200) {
-            throw new SchulmanagerException("Cannot remove the remembered device: HTTP " + resp.statusCode());
+        body.add("device", device);
+        Response resp = post(base + DELETE_DEVICE_PATH, body, token != null);
+        if (resp.status() != 200) {
+            throw new SchulmanagerException("Cannot remove the remembered device: HTTP " + resp.status());
         }
         userDevice = null;
     }
@@ -297,22 +327,23 @@ public class SchulmanagerClient {
     // ------------------------------------------------------------------ bundle version
 
     private String discoverBundleVersion() {
-        if (bundleVersion != null) {
-            return bundleVersion;
+        String known = bundleVersion;
+        if (known != null) {
+            return known;
         }
-        bundleVersion = DUMMY_BUNDLE_VERSION;
+        String found = DUMMY_BUNDLE_VERSION;
         try {
-            String html = get(BASE + "/");
+            String html = get(base + "/");
             List<String> scripts = new ArrayList<>();
             Matcher m = Pattern.compile("<script[^>]+src=[\"']([^\"']+\\.js)[^>]*>", Pattern.CASE_INSENSITIVE)
                     .matcher(html);
             while (m.find()) {
-                scripts.add(absolute(m.group(1)));
+                addScript(scripts, m.group(1));
             }
             m = Pattern.compile("<link[^>]+rel=[\"']modulepreload[\"'][^>]+href=[\"']([^\"']+\\.js)[\"']",
                     Pattern.CASE_INSENSITIVE).matcher(html);
             while (m.find()) {
-                scripts.add(absolute(m.group(1)));
+                addScript(scripts, m.group(1));
             }
             Pattern literal = Pattern.compile("bundleVersion\\s*:\\s*[\"']([a-f0-9]{10})[\"']",
                     Pattern.CASE_INSENSITIVE);
@@ -321,28 +352,32 @@ public class SchulmanagerClient {
             for (String url : scripts) {
                 String js = get(url);
                 Matcher lm = literal.matcher(js);
-                if (lm.find()) {
-                    bundleVersion = lm.group(1);
-                    break;
-                }
                 Matcher nm = near.matcher(js);
-                if (nm.find()) {
-                    bundleVersion = nm.group(1);
+                String v = lm.find() ? lm.group(1) : nm.find() ? nm.group(1) : null;
+                if (v != null) {
+                    found = v;
                     break;
                 }
             }
         } catch (SchulmanagerException e) {
             logger.debug("bundleVersion not found, using a placeholder: {}", e.getMessage());
         }
-        logger.debug("Schulmanager bundleVersion: {}", bundleVersion);
-        return bundleVersion;
+        logger.debug("Schulmanager bundleVersion: {}", found);
+        bundleVersion = found;
+        return found;
     }
 
-    private static String absolute(String src) {
+    private void addScript(List<String> scripts, @Nullable String src) {
+        if (src != null) {
+            scripts.add(absolute(src));
+        }
+    }
+
+    private String absolute(String src) {
         if (src.startsWith("http")) {
             return src;
         }
-        return src.startsWith("/") ? BASE + src : BASE + "/" + src.replaceFirst("^\\./", "");
+        return src.startsWith("/") ? base + src : base + "/" + src.replaceFirst("^\\./", "");
     }
 
     // ------------------------------------------------------------------ /api/calls
@@ -361,29 +396,30 @@ public class SchulmanagerClient {
         JsonObject payload = new JsonObject();
         payload.add("requests", requests);
         payload.addProperty("bundleVersion", discoverBundleVersion());
-        HttpResponse<String> resp = post(CALLS_URL, payload, true);
-        if (resp.statusCode() == 401) {
+        Response resp = post(base + CALLS_PATH, payload, true);
+        if (resp.status() == 401) {
             logger.debug("Schulmanager session expired, logging in again");
             token = null;
             login();
-            resp = post(CALLS_URL, payload, true);
+            resp = post(base + CALLS_PATH, payload, true);
         }
         if (logger.isTraceEnabled()) {
             JsonArray names = new JsonArray();
-            requests.forEach(r -> names.add(r.getAsJsonObject().get("endpointName")));
-            logger.trace("Schulmanager {} -> HTTP {}: {}", names, resp.statusCode(), resp.body());
+            requests.forEach(r -> names.add(r.isJsonObject() ? str(r.getAsJsonObject(), "endpointName") : ""));
+            logger.trace("Schulmanager {} -> HTTP {}: {}", names, resp.status(), resp.body());
         }
-        if (resp.statusCode() != 200) {
-            throw new SchulmanagerException("/api/calls failed: HTTP " + resp.statusCode());
+        if (resp.status() != 200) {
+            throw new SchulmanagerException("/api/calls failed: HTTP " + resp.status());
         }
         JsonObject data = parseObject(resp.body());
-        if (data == null || !data.has("results") || !data.get("results").isJsonArray()) {
+        JsonElement results = data == null ? null : data.get("results");
+        if (results == null || !results.isJsonArray()) {
             throw new SchulmanagerException("/api/calls: unexpected response");
         }
-        return data.getAsJsonArray("results");
+        return results.getAsJsonArray();
     }
 
-    public static JsonObject request(String module, String endpoint, JsonObject parameters) {
+    public static JsonObject request(@Nullable String module, String endpoint, @Nullable JsonObject parameters) {
         JsonObject r = new JsonObject();
         r.add("moduleName", module == null ? JsonNull.INSTANCE : new JsonPrimitive(module));
         r.addProperty("endpointName", endpoint);
@@ -394,34 +430,37 @@ public class SchulmanagerClient {
     }
 
     /** Data of one result, or null if that request failed. */
-    public static JsonElement resultData(JsonArray results, int index) {
+    public static @Nullable JsonElement resultData(JsonArray results, int index) {
         if (results.size() <= index || !results.get(index).isJsonObject()) {
             return null;
         }
         JsonObject r = results.get(index).getAsJsonObject();
-        if (r.has("status") && r.get("status").getAsInt() != 200) {
+        Integer status = integer(r, "status");
+        if (status != null && status != 200) {
             return null;
         }
         return r.get("data");
     }
 
-    private JsonElement single(String module, String endpoint, JsonObject params, boolean optional)
-            throws SchulmanagerException {
-        if (optional && unavailableModules.contains(module)) {
-            throw new ModuleUnavailableException(module);
+    private @Nullable JsonElement single(@Nullable String module, String endpoint, @Nullable JsonObject params,
+            boolean optional) throws SchulmanagerException {
+        String moduleName = module == null ? "main" : module;
+        if (optional && unavailableModules.contains(moduleName)) {
+            throw new ModuleUnavailableException(moduleName);
         }
         JsonArray reqs = new JsonArray();
         reqs.add(request(module, endpoint, params == null ? new JsonObject() : params));
         JsonArray results = calls(reqs);
         if (results.size() > 0 && results.get(0).isJsonObject()) {
             JsonObject r = results.get(0).getAsJsonObject();
-            int status = r.has("status") ? r.get("status").getAsInt() : 200;
+            Integer s = integer(r, "status");
+            int status = s != null ? s : 200;
             if ((status == 403 || (status == 500 && "get-homework".equals(endpoint))) && optional) {
-                unavailableModules.add(module);
-                throw new ModuleUnavailableException(module);
+                unavailableModules.add(moduleName);
+                throw new ModuleUnavailableException(moduleName);
             }
             if (status != 200) {
-                logger.debug("Schulmanager {}/{} -> Status {}", module, endpoint, status);
+                logger.debug("Schulmanager {}/{} -> Status {}", moduleName, endpoint, status);
                 return null;
             }
             return r.get("data");
@@ -488,13 +527,13 @@ public class SchulmanagerClient {
             if (d != null && d.isJsonObject()) {
                 JsonObject o = d.getAsJsonObject();
                 // the letter may come directly or wrapped (e.g. {letter: {...}})
-                letter = o.has("text") || o.has("attachments") ? o
-                        : o.has("letter") && o.get("letter").isJsonObject() ? o.getAsJsonObject("letter") : o;
+                JsonObject inner = obj(o, "letter");
+                letter = o.has("text") || o.has("attachments") || inner == null ? o : inner;
             }
             if (letter != null) {
                 result.put(ids.get(i), letter);
             } else if (i == 0) {
-                String txt = results.size() > 0 ? results.get(0).toString() : "keine Antwort";
+                String txt = results.size() > 0 ? results.get(0).toString() : "no answer";
                 logger.debug("Letter text (letters/get-letter-for-reading) not readable: {}",
                         txt.substring(0, Math.min(300, txt.length())));
             }
@@ -520,9 +559,9 @@ public class SchulmanagerClient {
         int sum = 0;
         if (subs != null && subs.isJsonArray()) {
             for (JsonElement s : subs.getAsJsonArray()) {
-                if (s.isJsonObject() && s.getAsJsonObject().has("unreadCount")
-                        && !s.getAsJsonObject().get("unreadCount").isJsonNull()) {
-                    sum += s.getAsJsonObject().get("unreadCount").getAsInt();
+                Integer unread = s.isJsonObject() ? integer(s.getAsJsonObject(), "unreadCount") : null;
+                if (unread != null) {
+                    sum += unread;
                 }
             }
         }
@@ -541,9 +580,9 @@ public class SchulmanagerClient {
 
     /**
      * Class exams (exams/get-exams) plus school-wide calendar events visible to the student, in one batch, like the
-     * web app does. Returns [examsData, calendarEventsData], either may be null.
+     * web app does. Returns [exams, exam module events, calendar events, event categories], each may be null.
      */
-    public JsonElement[] fetchExams(StudentInfo student, LocalDate start, LocalDate end) throws SchulmanagerException {
+    public @Nullable JsonElement[] fetchExams(StudentInfo student, LocalDate start, LocalDate end) throws SchulmanagerException {
         JsonObject exams = new JsonObject();
         exams.add("student", studentObject(student, false));
         exams.addProperty("start", start.toString());
@@ -605,7 +644,7 @@ public class SchulmanagerClient {
      * Actual lessons (incl. substitutions and cancellations) between start and end plus the school's class hour
      * times. Returns [lessonsData, classHoursData], either may be null.
      */
-    public JsonElement[] fetchSchedule(StudentInfo student, LocalDate start, LocalDate end)
+    public @Nullable JsonElement[] fetchSchedule(StudentInfo student, LocalDate start, LocalDate end)
             throws SchulmanagerException {
         JsonObject p = new JsonObject();
         p.add("student", studentObject(student, true));
@@ -623,58 +662,75 @@ public class SchulmanagerClient {
         o.addProperty("id", Integer.parseInt(s.id));
         o.addProperty("firstname", s.firstname);
         o.addProperty("lastname", s.lastname);
+        Integer classId = s.classId;
         if (withClass) {
-            o.add("classId", s.classId == null ? JsonNull.INSTANCE : new JsonPrimitive(s.classId));
+            o.add("classId", json(classId));
             JsonObject cls = new JsonObject();
-            cls.add("id", s.classId == null ? JsonNull.INSTANCE : new JsonPrimitive(s.classId));
+            cls.add("id", json(classId));
             cls.add("name", JsonNull.INSTANCE);
             cls.add("gradeLevels", JsonNull.INSTANCE);
             cls.add("isCourseSystem", JsonNull.INSTANCE);
             o.add("class", cls);
         } else {
             o.addProperty("sex", "Male");
-            o.addProperty("classId", s.classId == null ? 0 : s.classId);
+            o.addProperty("classId", classId == null ? 0 : classId);
         }
         return o;
     }
 
     // ------------------------------------------------------------------ http helpers
 
-    private HttpResponse<String> post(String url, JsonObject body, boolean auth) throws SchulmanagerException {
-        HttpRequest.Builder b = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT)
-                .header("User-Agent", USER_AGENT).header("Accept", "application/json, text/plain, */*")
-                .header("Accept-Language", "de-DE,de;q=0.9").header("Content-Type", "application/json;charset=UTF-8")
-                .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8));
-        if (auth && token != null) {
-            b.header("Authorization", "Bearer " + token);
+    private Response post(String url, JsonObject body, boolean auth) throws SchulmanagerException {
+        Request req = http.newRequest(url).method(HttpMethod.POST).timeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .agent(USER_AGENT).header(HttpHeader.ACCEPT, "application/json, text/plain, */*")
+                .header(HttpHeader.ACCEPT_LANGUAGE, "de-DE,de;q=0.9").content(new StringContentProvider(
+                        "application/json;charset=UTF-8", body.toString(), StandardCharsets.UTF_8));
+        String t = token;
+        if (auth && t != null) {
+            req.header(HttpHeader.AUTHORIZATION, "Bearer " + t);
         }
-        return send(b.build());
+        return send(req);
     }
 
     private String get(String url) throws SchulmanagerException {
-        HttpRequest req = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT).header("User-Agent", USER_AGENT)
-                .GET().build();
-        HttpResponse<String> resp = send(req);
-        if (resp.statusCode() != 200) {
-            throw new SchulmanagerException("GET " + url + " -> HTTP " + resp.statusCode());
+        Request req = http.newRequest(url).method(HttpMethod.GET).timeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .agent(USER_AGENT);
+        Response resp = send(req);
+        if (resp.status() != 200) {
+            throw new SchulmanagerException("GET " + url + " -> HTTP " + resp.status());
         }
         return resp.body();
     }
 
-    private HttpResponse<String> send(HttpRequest req) throws SchulmanagerException {
+    private Response send(Request req) throws SchulmanagerException {
+        FutureResponseListener listener = new FutureResponseListener(req, MAX_RESPONSE_BYTES);
+        req.send(listener);
         try {
-            return http.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            throw new SchulmanagerException("Connection error: " + e.getMessage(), e);
+            ContentResponse resp = listener.get(TIMEOUT_SECONDS + 5, TimeUnit.SECONDS);
+            // Schulmanager answers in UTF-8, also where the content type names no charset
+            return new Response(resp.getStatus(), new String(resp.getContent(), StandardCharsets.UTF_8));
         } catch (InterruptedException e) {
+            req.abort(e);
             Thread.currentThread().interrupt();
             throw new SchulmanagerException("Interrupted", e);
+        } catch (TimeoutException e) {
+            req.abort(e);
+            throw new SchulmanagerException("Timeout: " + req.getURI(), e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof HttpResponseException hre) {
+                // Jetty rejects a 401 without WWW-Authenticate header (as Schulmanager sends it) as protocol
+                // violation; the status is still needed to detect wrong credentials and expired sessions
+                return new Response(hre.getResponse().getStatus(), "");
+            }
+            throw new SchulmanagerException("Connection error: " + (cause != null ? cause.getMessage() : e.getMessage()),
+                    e);
         }
     }
 
     // ------------------------------------------------------------------ json helpers
 
-    private static JsonObject parseObject(String text) {
+    private static @Nullable JsonObject parseObject(String text) {
         try {
             JsonElement el = JsonParser.parseString(text);
             return el.isJsonObject() ? el.getAsJsonObject() : null;
@@ -684,15 +740,39 @@ public class SchulmanagerClient {
     }
 
     private static boolean isTrue(JsonObject o, String key) {
-        return o.has(key) && o.get(key).isJsonPrimitive() && o.get(key).getAsBoolean();
+        JsonElement e = o.get(key);
+        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean() && e.getAsBoolean();
     }
 
     static String str(JsonObject o, String key) {
-        return o.has(key) && o.get(key).isJsonPrimitive() ? o.get(key).getAsString() : "";
+        JsonElement e = o.get(key);
+        return e != null && e.isJsonPrimitive() ? e.getAsString() : "";
+    }
+
+    private static @Nullable JsonObject obj(JsonObject o, String key) {
+        JsonElement e = o.get(key);
+        return e != null && e.isJsonObject() ? e.getAsJsonObject() : null;
+    }
+
+    private static @Nullable Integer integer(JsonObject o, String key) {
+        JsonElement e = o.get(key);
+        if (e == null || !e.isJsonPrimitive()) {
+            return null;
+        }
+        try {
+            return e.getAsInt();
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private static JsonElement json(@Nullable Integer value) {
+        return value == null ? JsonNull.INSTANCE : new JsonPrimitive(value);
     }
 
     private static JsonArray array(JsonObject o, String key) {
-        return o.has(key) && o.get(key).isJsonArray() ? o.getAsJsonArray(key) : new JsonArray();
+        JsonElement e = o.get(key);
+        return e != null && e.isJsonArray() ? e.getAsJsonArray() : new JsonArray();
     }
 
     private static JsonArray stringArray(String... values) {

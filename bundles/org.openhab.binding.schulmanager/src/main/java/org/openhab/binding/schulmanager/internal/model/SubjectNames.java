@@ -17,6 +17,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
+
 /**
  * User defined display names per subject, configured as {@code "Ev=Religion, Swd=Sport"}.
  * The key may be the subject abbreviation (Ev) or the official name (Evangelische Religionslehre), case does not
@@ -24,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * @author Simon Scherer - Initial contribution
  */
+@NonNullByDefault
 public final class SubjectNames {
 
     public static final SubjectNames NONE = new SubjectNames(Map.of());
@@ -37,7 +41,7 @@ public final class SubjectNames {
     }
 
     /** Remember which abbreviation belongs to an official subject name. */
-    public void learn(String abbreviation, String fullName) {
+    public void learn(@Nullable String abbreviation, @Nullable String fullName) {
         if (names.isEmpty() || abbreviation == null || abbreviation.isEmpty() || fullName == null
                 || fullName.isEmpty()) {
             return;
@@ -45,7 +49,7 @@ public final class SubjectNames {
         abbreviations.put(fullName.trim().toLowerCase(Locale.ROOT), abbreviation.trim());
     }
 
-    public static SubjectNames parse(String config) {
+    public static SubjectNames parse(@Nullable String config) {
         if (config == null || config.isBlank()) {
             return NONE;
         }
@@ -65,7 +69,7 @@ public final class SubjectNames {
     }
 
     /** The configured name for this subject (abbreviation is checked first), or null. */
-    public String lookup(String abbreviation, String fullName) {
+    public @Nullable String lookup(@Nullable String abbreviation, @Nullable String fullName) {
         if (names.isEmpty()) {
             return null;
         }
@@ -74,8 +78,9 @@ public final class SubjectNames {
         if (v == null && fullName != null && !fullName.isEmpty()) {
             String key = fullName.trim().toLowerCase(Locale.ROOT);
             v = names.get(key);
-            if (v == null && abbreviations.containsKey(key)) {
-                v = names.get(abbreviations.get(key).toLowerCase(Locale.ROOT));
+            String learned = abbreviations.get(key);
+            if (v == null && learned != null) {
+                v = names.get(learned.toLowerCase(Locale.ROOT));
             }
         }
         return v;

@@ -14,14 +14,13 @@ package org.openhab.binding.schulmanager.internal;
 
 import static org.openhab.binding.schulmanager.internal.SchulmanagerBindingConstants.*;
 
-import java.net.http.HttpClient;
-
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
-import org.openhab.binding.schulmanager.internal.api.SchulmanagerClient;
+import org.eclipse.jetty.client.HttpClient;
 import org.openhab.binding.schulmanager.internal.handler.SchulmanagerAccountHandler;
 import org.openhab.binding.schulmanager.internal.handler.SchulmanagerStudentHandler;
 import org.openhab.core.i18n.TimeZoneProvider;
+import org.openhab.core.io.net.http.HttpClientFactory;
 import org.openhab.core.thing.Bridge;
 import org.openhab.core.thing.Thing;
 import org.openhab.core.thing.ThingTypeUID;
@@ -41,13 +40,14 @@ import org.osgi.service.component.annotations.Reference;
 @Component(configurationPid = "binding.schulmanager", service = ThingHandlerFactory.class)
 public class SchulmanagerHandlerFactory extends BaseThingHandlerFactory {
 
-    /** One HTTP client shared by all accounts of this binding. */
-    private final HttpClient httpClient = SchulmanagerClient.createHttpClient();
+    private final HttpClient httpClient;
     private final TimeZoneProvider timeZoneProvider;
 
     @Activate
-    public SchulmanagerHandlerFactory(@Reference TimeZoneProvider timeZoneProvider) {
+    public SchulmanagerHandlerFactory(@Reference TimeZoneProvider timeZoneProvider,
+            @Reference HttpClientFactory httpClientFactory) {
         this.timeZoneProvider = timeZoneProvider;
+        this.httpClient = httpClientFactory.getCommonHttpClient();
     }
 
     @Override

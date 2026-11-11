@@ -25,8 +25,15 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -38,6 +45,7 @@ import com.google.gson.JsonObject;
  *
  * @author Simon Scherer - Initial contribution
  */
+@NonNullByDefault
 public final class DataParser {
 
     private DataParser() {
@@ -47,8 +55,13 @@ public final class DataParser {
     public static class Schedule {
         public final List<Period> periods = new ArrayList<>();
         public final TreeMap<LocalDate, List<Lesson>> days = new TreeMap<>();
-        public LocalDate rangeStart;
-        public LocalDate rangeEnd;
+        public final LocalDate rangeStart;
+        public final LocalDate rangeEnd;
+
+        public Schedule(LocalDate rangeStart, LocalDate rangeEnd) {
+            this.rangeStart = rangeStart;
+            this.rangeEnd = rangeEnd;
+        }
 
         public List<Lesson> lessonsOn(LocalDate day) {
             return days.getOrDefault(day, List.of());
@@ -68,16 +81,17 @@ public final class DataParser {
         }
     }
 
-    /** "Sn/Rd" -> "Schneider/Reindl" for the abbreviations known from the timetable; unknown ones stay. */
+    /** "Bec/Hof" -> "Becker/Hoffmann" for the abbreviations known from the timetable; unknown ones stay. */
     public static String mapAbbreviations(String text, Map<String, String> names) {
         if (names.isEmpty()) {
             return text;
         }
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("[^/,;\\s]+").matcher(text);
+        Matcher m = ABBREVIATION.matcher(text);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
-            String n = names.get(m.group());
-            m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(n != null ? n : m.group()));
+            String found = text.substring(m.start(), m.end());
+            String n = names.get(found);
+            m.appendReplacement(sb, Matcher.quoteReplacement(n != null ? n : found));
         }
         m.appendTail(sb);
         return sb.toString();
@@ -85,8 +99,8 @@ public final class DataParser {
 
     // ================================================================== schedule
 
-    public static Schedule parseSchedule(JsonElement lessonsData, JsonElement classHoursData, LocalDate rangeStart,
-            LocalDate rangeEnd) {
+    public static Schedule parseSchedule(@Nullable JsonElement lessonsData, @Nullable JsonElement classHoursData,
+            LocalDate rangeStart, LocalDate rangeEnd) {
         return parseSchedule(lessonsData, classHoursData, rangeStart, rangeEnd, Lesson.TEACHER_ABBREVIATION,
                 Lesson.SUBJECT_ABBREVIATION, SubjectNames.NONE);
     }
@@ -95,11 +109,10 @@ public final class DataParser {
      * @param teacherDisplay how teachers are shown in lines and in the timetable: abbreviation, lastname or name
      * @param subjectDisplay how subjects are shown: abbreviation or name
      */
-    public static Schedule parseSchedule(JsonElement lessonsData, JsonElement classHoursData, LocalDate rangeStart,
-            LocalDate rangeEnd, String teacherDisplay, String subjectDisplay, SubjectNames subjectNames) {
-        Schedule result = new Schedule();
-        result.rangeStart = rangeStart;
-        result.rangeEnd = rangeEnd;
+    public static Schedule parseSchedule(@Nullable JsonElement lessonsData, @Nullable JsonElement classHoursData,
+            LocalDate rangeStart, LocalDate rangeEnd, String teacherDisplay, String subjectDisplay,
+            SubjectNames subjectNames) {
+        Schedule result = new Schedule(rangeStart, rangeEnd);
 
         Map<String, JsonObject> classHours = new HashMap<>();
         if (classHoursData != null && classHoursData.isJsonArray()) {
@@ -108,8 +121,9 @@ public final class DataParser {
                     continue;
                 }
                 JsonObject ch = e.getAsJsonObject();
-                if (ch.has("id")) {
-                    classHours.put(ch.get("id").getAsString(), ch);
+                String id = str(ch, "id");
+                if (!id.isEmpty()) {
+                    classHours.put(id, ch);
                 }
                 Period p = new Period();
                 p.number = normalizeHour(str(ch, "number"));
@@ -130,16 +144,18 @@ public final class DataParser {
                 JsonObject entry = e.getAsJsonObject();
                 Lesson l = exportLesson(entry, classHours);
                 subjectNames.learn(l.subject, l.subjectFull);
-                if (l.original != null) {
-                    subjectNames.learn(l.original.subject, l.original.subjectFull);
+                Lesson.Original o = l.original;
+                if (o != null) {
+                    subjectNames.learn(o.subject, o.subjectFull);
                 }
                 l.applyDisplay(teacherDisplay, subjectDisplay, subjectNames);
-                if (l.date != null) {
-                    raw.computeIfAbsent(l.date, d -> new ArrayList<>()).add(l);
+                LocalDate date = l.date;
+                if (date != null) {
+                    raw.computeIfAbsent(date, d -> new ArrayList<>()).add(l);
                 }
             }
         }
-        for (LocalDate d = rangeStart; d != null && !d.isAfter(rangeEnd); d = d.plusDays(1)) {
+        for (LocalDate d = rangeStart; !d.isAfter(rangeEnd); d = d.plusDays(1)) {
             raw.putIfAbsent(d, new ArrayList<>());
         }
         for (Map.Entry<LocalDate, List<Lesson>> day : raw.entrySet()) {
@@ -151,7 +167,7 @@ public final class DataParser {
                     l.id = l.id + "-" + count;
                 }
             }
-            merged.sort(Comparator.comparing((Lesson l) -> l.start == null ? LocalTime.MAX : l.start)
+            merged.sort(Comparator.comparing((Lesson l) -> orElse(l.start, LocalTime.MAX))
                     .thenComparing(l -> periodSortKey(l.period)));
             result.days.put(day.getKey(), merged);
         }
@@ -224,17 +240,19 @@ public final class DataParser {
         if (day.isEmpty()) {
             day = str(entry, "start");
         }
-        l.date = date(day);
+        LocalDate lessonDate = date(day);
+        l.date = lessonDate;
 
         JsonObject ch = obj(entry, "classHour");
         if (ch != null) {
             l.period = normalizeHour(str(ch, "number"));
-            JsonObject times = ch.has("id") ? classHours.get(ch.get("id").getAsString()) : null;
+            String chId = str(ch, "id");
+            JsonObject times = chId.isEmpty() ? null : classHours.get(chId);
             String from = str(times != null ? times : ch, "from");
             String until = str(times != null ? times : ch, "until");
-            if (times != null && l.date != null) {
+            if (times != null && lessonDate != null) {
                 // fromByDay/untilByDay use the JavaScript weekday (0 = Sunday)
-                int jsDay = l.date.getDayOfWeek().getValue() % 7;
+                int jsDay = lessonDate.getDayOfWeek().getValue() % 7;
                 String f = indexStr(times, "fromByDay", jsDay);
                 String u = indexStr(times, "untilByDay", jsDay);
                 if (!f.isEmpty()) {
@@ -273,7 +291,7 @@ public final class DataParser {
         if (lessonId.isEmpty() && original != null) {
             lessonId = str(original, "lessonId");
         }
-        String dayIso = l.date == null ? "" : l.date.toString();
+        String dayIso = lessonDate == null ? "" : lessonDate.toString();
         if (!lessonId.isEmpty()) {
             l.id = dayIso + "-" + lessonId;
         } else if (!str(actual, "substitutionId").isEmpty()) {
@@ -304,18 +322,21 @@ public final class DataParser {
             addAll(first.rooms, l.rooms);
             addAll(first.changes, l.changes);
             addAll(first.notes, l.notes);
-            if (first.original != null && l.original != null) {
-                addAll(first.original.rooms, l.original.rooms);
+            Lesson.Original fo = first.original;
+            Lesson.Original lo = l.original;
+            if (fo != null && lo != null) {
+                addAll(fo.rooms, lo.rooms);
             }
         }
         return merged;
     }
 
     private static boolean sameExceptRooms(Lesson a, Lesson b) {
-        boolean origSame = a.original == null ? b.original == null
-                : b.original != null && a.original.subject.equals(b.original.subject)
-                        && a.original.teachers.equals(b.original.teachers)
-                        && Objects.equals(a.original.group, b.original.group);
+        Lesson.Original ao = a.original;
+        Lesson.Original bo = b.original;
+        boolean origSame = ao == null ? bo == null
+                : bo != null && ao.subject.equals(bo.subject) && ao.teachers.equals(bo.teachers)
+                        && Objects.equals(ao.group, bo.group);
         return Objects.equals(a.date, b.date) && a.period.equals(b.period) && Objects.equals(a.start, b.start)
                 && a.subject.equals(b.subject) && a.teachers.equals(b.teachers) && Objects.equals(a.group, b.group)
                 && a.kind.equals(b.kind) && a.status.equals(b.status) && a.sourceType.equals(b.sourceType) && origSame;
@@ -336,6 +357,7 @@ public final class DataParser {
         List<String> teacherNames = new ArrayList<>();
         List<String> teacherLastnames = new ArrayList<>();
         List<String> rooms = new ArrayList<>();
+        @Nullable
         String group;
 
         Summary copyWithoutTeachersAndRooms() {
@@ -377,8 +399,9 @@ public final class DataParser {
             s.teacherLastnames.add(last.isEmpty() ? abbr : last);
         }
         List<JsonElement> rooms = new ArrayList<>();
-        if (rec.has("room")) {
-            rooms.add(rec.get("room"));
+        JsonElement room = rec.get("room");
+        if (room != null) {
+            rooms.add(room);
         }
         arr(rec, "rooms").forEach(rooms::add);
         for (JsonElement r : rooms) {
@@ -404,12 +427,13 @@ public final class DataParser {
 
     // ================================================================== exams
 
-    public static List<Exam> parseExams(JsonElement examsData, JsonElement eventsData, ZoneId zone) {
+    public static List<Exam> parseExams(@Nullable JsonElement examsData, @Nullable JsonElement eventsData,
+            ZoneId zone) {
         return parseExams(examsData, eventsData, zone, SubjectNames.NONE);
     }
 
-    public static List<Exam> parseExams(JsonElement examsData, JsonElement eventsData, ZoneId zone,
-            SubjectNames subjectNames) {
+    public static List<Exam> parseExams(@Nullable JsonElement examsData, @Nullable JsonElement eventsData,
+            ZoneId zone, SubjectNames subjectNames) {
         return parseExams(examsData, eventsData, zone, subjectNames, null, null);
     }
 
@@ -418,8 +442,9 @@ public final class DataParser {
      *            if null, the events of the exams module (eventsData) are used
      * @param categoriesData calendar/get-event-categories
      */
-    public static List<Exam> parseExams(JsonElement examsData, JsonElement eventsData, ZoneId zone,
-            SubjectNames subjectNames, JsonElement calendarData, JsonElement categoriesData) {
+    public static List<Exam> parseExams(@Nullable JsonElement examsData, @Nullable JsonElement eventsData,
+            ZoneId zone, SubjectNames subjectNames, @Nullable JsonElement calendarData,
+            @Nullable JsonElement categoriesData) {
         List<Exam> list = new ArrayList<>();
         if (examsData != null && examsData.isJsonArray()) {
             for (JsonElement e : examsData.getAsJsonArray()) {
@@ -427,9 +452,13 @@ public final class DataParser {
                     continue;
                 }
                 JsonObject o = e.getAsJsonObject();
+                LocalDate examDate = date(str(o, "date"));
+                if (examDate == null) {
+                    continue;
+                }
                 Exam x = new Exam();
                 x.id = str(o, "id");
-                x.date = date(str(o, "date"));
+                x.date = examDate;
                 JsonObject type = obj(o, "type");
                 if (type != null) {
                     x.type = str(type, "name");
@@ -458,9 +487,7 @@ public final class DataParser {
                         x.period = x.period + "–" + normalizeHour(str(ech, "number"));
                     }
                 }
-                if (x.date != null) {
-                    list.add(x);
-                }
+                list.add(x);
             }
         }
         JsonArray calendarEvents = null;
@@ -476,9 +503,9 @@ public final class DataParser {
         Map<String, String[]> categories = new HashMap<>();
         if (categoriesData != null && categoriesData.isJsonArray()) {
             for (JsonElement c : categoriesData.getAsJsonArray()) {
-                if (c.isJsonObject() && c.getAsJsonObject().has("id")) {
+                if (c.isJsonObject() && !str(c.getAsJsonObject(), "id").isEmpty()) {
                     JsonObject co = c.getAsJsonObject();
-                    categories.put(co.get("id").getAsString(), new String[] { str(co, "name"), str(co, "color") });
+                    categories.put(str(co, "id"), new String[] { str(co, "name"), str(co, "color") });
                 }
             }
         }
@@ -497,13 +524,11 @@ public final class DataParser {
                 x.comment = plainText(str(o, "description"));
                 x.location = str(o, "location").trim();
                 x.organizer = str(o, "organizer").trim();
-                String catId = o.has("categoryId") && !o.get("categoryId").isJsonNull()
-                        ? o.get("categoryId").getAsString()
-                        : "";
+                String catId = str(o, "categoryId");
                 x.holiday = "-1".equals(catId);
                 String[] cat = categories.get(catId);
                 x.category = x.holiday ? "Ferien/Feiertage" : cat != null ? cat[0] : "";
-                x.categoryColor = cat != null && cat[1] != null ? cat[1] : "";
+                x.categoryColor = cat != null ? cat[1] : "";
                 // Calendar events carry real UTC timestamps, unlike all other times of this API
                 ZonedDateTime start = utc(str(o, "start"), zone);
                 ZonedDateTime end = utc(str(o, "end"), zone);
@@ -514,9 +539,13 @@ public final class DataParser {
                         && str(o, "end").contains("T00:00:00") && !str(o, "start").equals(str(o, "end")));
                 if (allDay) {
                     // midnight markers of calendar dates, do not shift them; the end is exclusive
-                    x.date = date(str(o, "start"));
+                    LocalDate first = date(str(o, "start"));
+                    if (first == null) {
+                        continue;
+                    }
+                    x.date = first;
                     LocalDate endExclusive = date(str(o, "end"));
-                    if (x.date != null && endExclusive != null && endExclusive.isAfter(x.date.plusDays(1))) {
+                    if (endExclusive != null && endExclusive.isAfter(first.plusDays(1))) {
                         x.endDate = endExclusive.minusDays(1);
                     }
                 } else {
@@ -527,11 +556,10 @@ public final class DataParser {
                 list.add(x);
             }
         }
-        list.sort(
-                Comparator.comparing((Exam x) -> x.date).thenComparing(x -> x.start == null ? LocalTime.MIN : x.start));
+        list.sort(Comparator.comparing((Exam x) -> x.date).thenComparing(x -> orElse(x.start, LocalTime.MIN)));
         // only drop true duplicates (same entry delivered twice); separate entries stay, as in the Schulmanager app
         List<Exam> unique = new ArrayList<>();
-        java.util.Set<String> seen = new java.util.HashSet<>();
+        Set<String> seen = new HashSet<>();
         for (Exam x : list) {
             String key = x.id.isEmpty() || x.id.equals("event-")
                     ? x.schoolEvent + "|" + x.date + "|" + x.start + "|" + x.type + "|" + x.subject + "|" + x.period
@@ -580,14 +608,19 @@ public final class DataParser {
             }
         }
         // newest first
-        list.sort(Comparator.comparing((Homework h) -> h.date == null ? LocalDate.MIN : h.date).reversed()
+        list.sort(Comparator.comparing((Homework h) -> orElse(h.date, LocalDate.MIN)).reversed()
                 .thenComparing(h -> h.subject));
         return list;
     }
 
     // ================================================================== helpers
 
-    public static String normalizeHour(String value) {
+    /** The value, or the fallback if it is null. */
+    static <T> T orElse(@Nullable T value, T fallback) {
+        return value != null ? value : fallback;
+    }
+
+    public static String normalizeHour(@Nullable String value) {
         String v = value == null ? "" : value.trim();
         while (v.endsWith(".")) {
             v = v.substring(0, v.length() - 1).trim();
@@ -604,7 +637,7 @@ public final class DataParser {
     }
 
     /** Calendar descriptions may contain HTML; turn it into plain text with line breaks. */
-    public static String plainText(String html) {
+    public static String plainText(@Nullable String html) {
         if (html == null || html.isBlank()) {
             return "";
         }
@@ -624,15 +657,16 @@ public final class DataParser {
             Map.entry("agrave", "à"), Map.entry("copy", "©"), Map.entry("sect", "§"), Map.entry("deg", "°"),
             Map.entry("times", "×"), Map.entry("shy", ""));
 
-    private static final java.util.regex.Pattern ENTITY = java.util.regex.Pattern
-            .compile("&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z]{2,8});");
+    private static final Pattern ENTITY = Pattern.compile("&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z]{2,8});");
+    private static final Pattern ABBREVIATION = Pattern.compile("[^/,;\\s]+");
 
     /** Decodes named (common) and numeric HTML entities in one pass, so "&amp;uuml;" stays "&uuml;". */
     static String decodeEntities(String s) {
-        java.util.regex.Matcher m = ENTITY.matcher(s);
+        Matcher m = ENTITY.matcher(s);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
-            String g = m.group(1);
+            String whole = s.substring(m.start(), m.end());
+            String g = whole.substring(1, whole.length() - 1);
             String rep = null;
             try {
                 if (g.startsWith("#x") || g.startsWith("#X")) {
@@ -647,31 +681,34 @@ public final class DataParser {
             } catch (IllegalArgumentException e) {
                 rep = null;
             }
-            m.appendReplacement(sb, java.util.regex.Matcher.quoteReplacement(rep == null ? m.group() : rep));
+            m.appendReplacement(sb, Matcher.quoteReplacement(rep == null ? whole : rep));
         }
         m.appendTail(sb);
         return sb.toString();
     }
 
-    public static String str(JsonObject o, String key) {
-        if (o == null || !o.has(key)) {
-            return "";
-        }
-        JsonElement e = o.get(key);
-        return e.isJsonPrimitive() ? e.getAsString() : "";
+    /** Text of a primitive member ("" if missing, null or not a primitive). */
+    public static String str(@Nullable JsonObject o, String key) {
+        JsonElement e = o == null ? null : o.get(key);
+        return e != null && e.isJsonPrimitive() ? e.getAsString() : "";
     }
 
-    private static JsonObject obj(JsonObject o, String key) {
-        return o != null && o.has(key) && o.get(key).isJsonObject() ? o.getAsJsonObject(key) : null;
+    /** Object member or null. */
+    public static @Nullable JsonObject obj(@Nullable JsonObject o, String key) {
+        JsonElement e = o == null ? null : o.get(key);
+        return e != null && e.isJsonObject() ? e.getAsJsonObject() : null;
     }
 
-    private static JsonArray arr(JsonObject o, String key) {
-        return o != null && o.has(key) && o.get(key).isJsonArray() ? o.getAsJsonArray(key) : new JsonArray();
+    /** Array member or an empty array. */
+    public static JsonArray arr(@Nullable JsonObject o, String key) {
+        JsonElement e = o == null ? null : o.get(key);
+        return e != null && e.isJsonArray() ? e.getAsJsonArray() : new JsonArray();
     }
 
-    private static boolean bool(JsonObject o, String key) {
-        return o.has(key) && o.get(key).isJsonPrimitive() && o.get(key).getAsJsonPrimitive().isBoolean()
-                && o.get(key).getAsBoolean();
+    /** True only for a boolean member with the value true. */
+    public static boolean bool(@Nullable JsonObject o, String key) {
+        JsonElement e = o == null ? null : o.get(key);
+        return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean() && e.getAsBoolean();
     }
 
     private static String indexStr(JsonObject o, String key, int index) {
@@ -682,7 +719,7 @@ public final class DataParser {
         return "";
     }
 
-    private static String firstNonEmpty(String... values) {
+    private static String firstNonEmpty(@Nullable String... values) {
         for (String v : values) {
             if (v != null && !v.isEmpty()) {
                 return v;
@@ -691,7 +728,7 @@ public final class DataParser {
         return "";
     }
 
-    public static LocalDate date(String s) {
+    public static @Nullable LocalDate date(@Nullable String s) {
         if (s == null || s.length() < 10) {
             return null;
         }
@@ -702,7 +739,7 @@ public final class DataParser {
         }
     }
 
-    static LocalTime time(String s) {
+    static @Nullable LocalTime time(@Nullable String s) {
         if (s == null || s.length() < 5) {
             return null;
         }
@@ -713,7 +750,7 @@ public final class DataParser {
         }
     }
 
-    private static ZonedDateTime utc(String s, ZoneId zone) {
+    private static @Nullable ZonedDateTime utc(@Nullable String s, ZoneId zone) {
         if (s == null || s.isEmpty()) {
             return null;
         }

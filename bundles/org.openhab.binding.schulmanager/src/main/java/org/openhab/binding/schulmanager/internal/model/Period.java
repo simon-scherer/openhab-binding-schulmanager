@@ -14,13 +14,17 @@ package org.openhab.binding.schulmanager.internal.model;
 
 import java.time.LocalTime;
 
+import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
+
 /**
  * A class hour of the school (default times, Monday to Friday).
  *
  * @author Simon Scherer - Initial contribution
  */
+@NonNullByDefault
 public class Period {
     public String number = "";
-    public LocalTime start;
-    public LocalTime end;
+    public @Nullable LocalTime start;
+    public @Nullable LocalTime end;
 }

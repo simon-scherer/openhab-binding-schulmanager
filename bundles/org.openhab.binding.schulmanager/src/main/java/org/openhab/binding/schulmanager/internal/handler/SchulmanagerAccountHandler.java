@@ -14,7 +14,6 @@ package org.openhab.binding.schulmanager.internal.handler;
 
 import static org.openhab.binding.schulmanager.internal.SchulmanagerBindingConstants.*;
 
-import java.net.http.HttpClient;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -32,6 +31,7 @@ import java.util.function.Supplier;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
+import org.eclipse.jetty.client.HttpClient;
 import org.openhab.binding.schulmanager.internal.api.SchulmanagerClient;
 import org.openhab.binding.schulmanager.internal.api.SchulmanagerException;
 import org.openhab.binding.schulmanager.internal.api.SchulmanagerException.AuthException;
@@ -236,7 +236,8 @@ public class SchulmanagerAccountHandler extends BaseBridgeHandler {
                 }
                 JsonObject acc = a.getAsJsonObject();
                 // the "id" of a multipleAccounts record is the user id of that school's account
-                Integer uid = acc.has("id") && !acc.get("id").isJsonNull() ? acc.get("id").getAsInt() : null;
+                String uidText = DataParser.str(acc, "id");
+                Integer uid = uidText.matches("\\d{1,9}") ? Integer.valueOf(uidText) : null;
                 JsonObject dev = deviceFor(uid);
                 SchulmanagerClient c = new SchulmanagerClient(http, config.username, config.password, null, uid, dev,
                         dev == null && !code.isEmpty() ? code : null);
@@ -248,8 +249,7 @@ public class SchulmanagerAccountHandler extends BaseBridgeHandler {
                 } catch (TwoFactorRequiredException e) {
                     throw e;
                 } catch (SchulmanagerException e) {
-                    logger.warn("Login to school '{}' failed: {}",
-                            acc.has("label") ? acc.get("label").getAsString() : uid, e.getMessage());
+                    logger.warn("Login to school '{}' failed: {}", DataParser.str(acc, "label"), e.getMessage());
                     if (firstError == null) {
                         firstError = e;
                     }
@@ -290,9 +290,11 @@ public class SchulmanagerAccountHandler extends BaseBridgeHandler {
     }
 
     private @Nullable JsonObject deviceFor(@Nullable Integer userId) {
+        if (userId == null) {
+            return null;
+        }
         for (JsonObject d : devices) {
-            if (userId != null && d.has("userId") && !d.get("userId").isJsonNull()
-                    && d.get("userId").getAsInt() == userId) {
+            if (String.valueOf(userId).equals(DataParser.str(d, "userId"))) {
                 return d;
             }
         }
@@ -304,8 +306,9 @@ public class SchulmanagerAccountHandler extends BaseBridgeHandler {
         if (Objects.equals(current, previous)) {
             return;
         }
-        devices.removeIf(d -> d.equals(previous) || (current != null && d.has("userId") && current.has("userId")
-                && d.get("userId").equals(current.get("userId"))));
+        String currentUser = current == null ? "" : DataParser.str(current, "userId");
+        devices.removeIf(d -> d.equals(previous)
+                || (!currentUser.isEmpty() && currentUser.equals(DataParser.str(d, "userId"))));
         if (current != null) {
             devices.add(current);
             logger.info("Device for the two-factor login remembered, the code is no longer needed");
@@ -368,8 +371,9 @@ public class SchulmanagerAccountHandler extends BaseBridgeHandler {
                 lettersAvailable = true;
                 letters += l.size();
                 for (JsonElement e : l) {
-                    if (e.isJsonObject() && e.getAsJsonObject().has("title")) {
-                        letterTitles.add(e.getAsJsonObject().get("title").getAsString());
+                    String title = e.isJsonObject() ? DataParser.str(e.getAsJsonObject(), "title") : "";
+                    if (!title.isEmpty()) {
+                        letterTitles.add(title);
                     }
                 }
             } catch (ModuleUnavailableException e) {

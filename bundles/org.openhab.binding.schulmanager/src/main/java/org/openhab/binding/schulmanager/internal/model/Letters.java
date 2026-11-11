@@ -27,6 +27,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -37,6 +40,7 @@ import com.google.gson.JsonObject;
  *
  * @author Simon Scherer - Initial contribution
  */
+@NonNullByDefault
 public final class Letters {
 
     public static final int MAX_LETTERS = 25;
@@ -51,8 +55,8 @@ public final class Letters {
     public static class Letter {
         public String id = "";
         public String title = "";
-        public ZonedDateTime sent;
-        public ZonedDateTime deadline;
+        public @Nullable ZonedDateTime sent;
+        public @Nullable ZonedDateTime deadline;
         public boolean unread;
         public boolean answered;
         public Set<String> studentIds = new LinkedHashSet<>();
@@ -72,10 +76,8 @@ public final class Letters {
             Letter l = new Letter();
             l.id = DataParser.str(o, "id");
             l.title = DataParser.str(o, "title").trim();
-            l.sent = ts(DataParser.str(o, "sentDate"), zone);
-            if (l.sent == null) {
-                l.sent = ts(DataParser.str(o, "createdAt"), zone);
-            }
+            ZonedDateTime sent = ts(DataParser.str(o, "sentDate"), zone);
+            l.sent = sent != null ? sent : ts(DataParser.str(o, "createdAt"), zone);
             l.deadline = ts(DataParser.str(o, "answerDeadline"), zone);
             boolean anyAnswer = false;
             JsonElement st = o.get("studentStatuses");
@@ -104,7 +106,8 @@ public final class Letters {
                 list.add(l);
             }
         }
-        list.sort(Comparator.comparing((Letter l) -> l.sent == null ? ZonedDateTime.now(zone).minusYears(50) : l.sent)
+        ZonedDateTime veryOld = ZonedDateTime.now(zone).minusYears(50);
+        list.sort(Comparator.comparing((Letter l) -> DataParser.orElse(l.sent, veryOld))
                 .reversed());
         return list;
     }
@@ -128,17 +131,19 @@ public final class Letters {
             o.addProperty("k", l.id);
             o.addProperty("id", l.id);
             o.addProperty("t", l.title.isEmpty() ? "Elternbrief" : l.title);
+            ZonedDateTime sent = l.sent;
             o.addProperty("wd",
-                    l.sent == null ? "" : l.sent.getDayOfWeek().getDisplayName(TextStyle.SHORT, DE).replace(".", ""));
-            o.addProperty("d", l.sent == null ? "" : l.sent.format(DMY));
-            o.addProperty("dm", l.sent == null ? "" : l.sent.format(DM));
-            o.addProperty("dt", l.sent == null ? "" : l.sent.format(DMYY));
-            o.addProperty("tm", l.sent == null ? "" : l.sent.format(HM));
+                    sent == null ? "" : sent.getDayOfWeek().getDisplayName(TextStyle.SHORT, DE).replace(".", ""));
+            o.addProperty("d", sent == null ? "" : sent.format(DMY));
+            o.addProperty("dm", sent == null ? "" : sent.format(DM));
+            o.addProperty("dt", sent == null ? "" : sent.format(DMYY));
+            o.addProperty("tm", sent == null ? "" : sent.format(HM));
             o.addProperty("u", l.unread);
             String dl = "";
             boolean overdue = false;
-            if (l.deadline != null && !l.answered) {
-                LocalDate dd = l.deadline.toLocalDate();
+            ZonedDateTime deadline = l.deadline;
+            if (deadline != null && !l.answered) {
+                LocalDate dd = deadline.toLocalDate();
                 overdue = dd.isBefore(today);
                 dl = (overdue ? "Rückmeldefrist abgelaufen (" : "Rückmeldung bis ")
                         + dd.getDayOfWeek().getDisplayName(TextStyle.SHORT, DE).replace(".", "") + " " + dd.format(DM)
@@ -160,8 +165,9 @@ public final class Letters {
             JsonArray att = new JsonArray();
             String txt = "";
             if (det != null) {
-                if (det.has("letter") && det.get("letter").isJsonObject() && !det.has("text")) {
-                    det = det.getAsJsonObject("letter");
+                JsonObject inner = DataParser.obj(det, "letter");
+                if (inner != null && !det.has("text")) {
+                    det = inner;
                 }
                 String raw = "";
                 for (String key : new String[] { "text", "body", "content", "html", "message" }) {
@@ -248,7 +254,7 @@ public final class Letters {
         return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean() && e.getAsBoolean();
     }
 
-    private static ZonedDateTime ts(String s, ZoneId zone) {
+    private static @Nullable ZonedDateTime ts(@Nullable String s, ZoneId zone) {
         if (s == null || s.isEmpty()) {
             return null;
         }

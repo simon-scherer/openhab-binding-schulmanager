@@ -26,6 +26,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 
+import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
 import org.openhab.binding.schulmanager.internal.model.DataParser.Schedule;
 
 import com.google.gson.JsonArray;
@@ -39,6 +41,7 @@ import com.google.gson.JsonObject;
  *
  * @author Simon Scherer - Initial contribution
  */
+@NonNullByDefault
 public final class WidgetJson {
 
     private static final Locale DE = Locale.GERMAN;
@@ -173,7 +176,9 @@ public final class WidgetJson {
     }
 
     private static boolean isNow(Lesson l, LocalTime t) {
-        return !l.isCancelled() && l.start != null && l.end != null && !t.isBefore(l.start) && t.isBefore(l.end);
+        LocalTime start = l.start;
+        LocalTime end = l.end;
+        return !l.isCancelled() && start != null && end != null && !t.isBefore(start) && t.isBefore(end);
     }
 
     private static JsonObject lesson(Lesson l, boolean now) {
@@ -195,19 +200,23 @@ public final class WidgetJson {
         // full teacher names for the detail view
         o.addProperty("tn", Lesson.fullTeacherText(l.teachers, l.teacherNames));
         o.addProperty("r", String.join(", ", l.rooms));
-        // technical course group names (e.g. "Swd_5F5A_Swd/5AF_1") are not helpful; keep plain class names
-        o.addProperty("g", l.group == null || l.group.contains("_") ? "" : l.group);
+        // technical course group names (e.g. "Sp_6B6C_Sp/6BF_1") are not helpful; keep plain class names
+        String group = l.group;
+        o.addProperty("g", group == null || group.contains("_") ? "" : group);
         o.addProperty("p", l.period);
-        o.addProperty("t", l.start == null ? "" : l.start + (l.end == null ? "" : "–" + l.end));
+        LocalTime start = l.start;
+        LocalTime end = l.end;
+        o.addProperty("t", start == null ? "" : start + (end == null ? "" : "–" + end));
         String orig = "";
-        if (l.original != null && l.isChanged() && !l.isCancelled()) {
+        Lesson.Original original = l.original;
+        if (original != null && l.isChanged() && !l.isCancelled()) {
             List<String> parts = new ArrayList<>();
-            parts.add(l.original.subjectFull.isEmpty() ? l.original.subject : l.original.subjectFull);
-            if (!l.original.teachers.isEmpty()) {
-                parts.add(Lesson.fullTeacherText(l.original.teachers, l.original.teacherNames));
+            parts.add(original.subjectFull.isEmpty() ? original.subject : original.subjectFull);
+            if (!original.teachers.isEmpty()) {
+                parts.add(Lesson.fullTeacherText(original.teachers, original.teacherNames));
             }
-            if (!l.original.rooms.isEmpty()) {
-                parts.add(String.join(", ", l.original.rooms));
+            if (!original.rooms.isEmpty()) {
+                parts.add(String.join(", ", original.rooms));
             }
             orig = String.join(" · ", parts);
         }
@@ -218,8 +227,8 @@ public final class WidgetJson {
         return o;
     }
 
-    private static void addRow(TreeMap<Integer, String[]> numbered, List<String[]> other, String period,
-            LocalTime start, LocalTime end) {
+    private static void addRow(TreeMap<Integer, String[]> numbered, List<String[]> other, @Nullable String period,
+            @Nullable LocalTime start, @Nullable LocalTime end) {
         String p = period == null ? "" : period;
         String[] row = { p, start == null ? "" : start.toString(), end == null ? "" : end.toString() };
         int n = number(p);
@@ -230,7 +239,7 @@ public final class WidgetJson {
         }
     }
 
-    private static int number(String p) {
+    private static int number(@Nullable String p) {
         if (p == null || p.isEmpty() || p.length() > 3 || !p.chars().allMatch(Character::isDigit)) {
             return Integer.MAX_VALUE;
         }
@@ -265,19 +274,21 @@ public final class WidgetJson {
                 }
                 o.addProperty("s", x.subject);
                 String time;
-                if (x.endDate != null && x.endDate.isAfter(x.date)) {
-                    time = "bis " + weekday(x.endDate) + " " + x.endDate.format(DM);
-                } else if (x.start == null) {
+                LocalDate endDate = x.endDate;
+                LocalTime start = x.start;
+                LocalTime end = x.end;
+                if (endDate != null && endDate.isAfter(x.date)) {
+                    time = "bis " + weekday(endDate) + " " + endDate.format(DM);
+                } else if (start == null) {
                     time = "ganztägig";
                 } else {
-                    time = x.start + (x.end != null && !x.end.equals(x.start) ? "–" + x.end : "") + " Uhr";
+                    time = start + (end != null && !end.equals(start) ? "–" + end : "") + " Uhr";
                 }
                 o.addProperty("time", time);
                 o.addProperty("loc", x.location);
                 o.addProperty("org", x.organizer);
                 o.addProperty("cat", x.category);
-                String cc = x.categoryColor != null && x.categoryColor.matches("#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}")
-                        ? x.categoryColor
+                String cc = x.categoryColor.matches("#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}") ? x.categoryColor
                         : x.holiday ? "#3a3a3c" : "";
                 o.addProperty("cc", cc);
                 o.addProperty("ctc", cc.isEmpty() || luminance(cc) < 0.215 ? "#ffffff" : "#1d232b");
@@ -285,7 +296,7 @@ public final class WidgetJson {
                 ev.add(o);
             } else {
                 o.addProperty("type", x.type);
-                String color = x.color != null && x.color.matches("#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}") ? x.color : "";
+                String color = x.color.matches("#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6}") ? x.color : "";
                 o.addProperty("color", color);
                 // readable text on the school's tag colour (light colours get dark text)
                 o.addProperty("tc", color.isEmpty() || luminance(color) < 0.215 ? "#ffffff" : "#1d232b");
@@ -313,14 +324,16 @@ public final class WidgetJson {
         root.addProperty("v", 1);
         Map<LocalDate, JsonArray> byDay = new LinkedHashMap<>();
         for (Homework h : homework) {
-            if (h.date == null || h.date.isBefore(today.minusDays(21))) {
+            LocalDate date = h.date;
+            if (date == null || date.isBefore(today.minusDays(21))) {
                 continue;
             }
             JsonObject o = new JsonObject();
-            o.addProperty("k", h.date + "/" + byDay.getOrDefault(h.date, new JsonArray()).size());
+            JsonArray items = byDay.computeIfAbsent(date, k -> new JsonArray());
+            o.addProperty("k", date + "/" + items.size());
             o.addProperty("s", h.subject);
             o.addProperty("t", h.text);
-            byDay.computeIfAbsent(h.date, k -> new JsonArray()).add(o);
+            items.add(o);
         }
         JsonArray days = new JsonArray();
         for (Map.Entry<LocalDate, JsonArray> e : byDay.entrySet()) {

@@ -17,12 +17,16 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.eclipse.jdt.annotation.NonNullByDefault;
+import org.eclipse.jdt.annotation.Nullable;
+
 /**
  * One timetable entry as it actually takes place (format follows the "schema_version 1" export of the Home
  * Assistant integration).
  *
  * @author Simon Scherer - Initial contribution
  */
+@NonNullByDefault
 public class Lesson {
 
     public static final String TEACHER_ABBREVIATION = "abbreviation";
@@ -36,15 +40,15 @@ public class Lesson {
     public static final String STATUS_CANCELLED = "cancelled";
 
     public String id = "";
-    public LocalDate date;
+    public @Nullable LocalDate date;
     public String period = "";
-    public LocalTime start;
-    public LocalTime end;
+    public @Nullable LocalTime start;
+    public @Nullable LocalTime end;
     public String subject = "";
     public String subjectFull = "";
     /** Subject as configured for display (subjectDisplay). */
     public String shownSubject = "";
-    public String group;
+    public @Nullable String group;
     /** Teacher abbreviations (key for change detection). */
     public List<String> teachers = new ArrayList<>();
     /** Full names "Vorname Nachname" (abbreviation if the school sends no name), same order as teachers. */
@@ -60,7 +64,7 @@ public class Lesson {
     /** cancellation, subject, teacher, room, special */
     public List<String> changes = new ArrayList<>();
     public List<String> notes = new ArrayList<>();
-    public Original original;
+    public @Nullable Original original;
     public String sourceType = "";
 
     public static class Original {
@@ -72,7 +76,7 @@ public class Lesson {
         public List<String> shownTeachers = new ArrayList<>();
         public String shownSubject = "";
         public List<String> rooms = new ArrayList<>();
-        public String group;
+        public @Nullable String group;
     }
 
     public void applyDisplay(String teacherMode, String subjectMode) {
@@ -83,10 +87,10 @@ public class Lesson {
         applyTeacherDisplay(teacherMode);
         String own = names.lookup(subject, subjectFull);
         shownSubject = own != null ? own : subjectText(subjectMode, subject, subjectFull);
-        if (original != null) {
-            String ownOrig = names.lookup(original.subject, original.subjectFull);
-            original.shownSubject = ownOrig != null ? ownOrig
-                    : subjectText(subjectMode, original.subject, original.subjectFull);
+        Original o = original;
+        if (o != null) {
+            String ownOrig = names.lookup(o.subject, o.subjectFull);
+            o.shownSubject = ownOrig != null ? ownOrig : subjectText(subjectMode, o.subject, o.subjectFull);
         }
     }
 
@@ -99,8 +103,9 @@ public class Lesson {
 
     public void applyTeacherDisplay(String mode) {
         shownTeachers = pick(mode, teachers, teacherNames, teacherLastnames);
-        if (original != null) {
-            original.shownTeachers = pick(mode, original.teachers, original.teacherNames, original.teacherLastnames);
+        Original o = original;
+        if (o != null) {
+            o.shownTeachers = pick(mode, o.teachers, o.teacherNames, o.teacherLastnames);
         }
     }
 
@@ -109,7 +114,7 @@ public class Lesson {
         return new ArrayList<>(chosen.size() == abbr.size() ? chosen : abbr);
     }
 
-    /** "Madeleine Graser (Gs)" for each teacher; just the abbreviation if no name is known. */
+    /** "Anna Becker (Bec)" for each teacher; just the abbreviation if no name is known. */
     public static String fullTeacherText(List<String> abbr, List<String> names) {
         List<String> parts = new ArrayList<>();
         for (int i = 0; i < abbr.size(); i++) {
@@ -127,7 +132,7 @@ public class Lesson {
         return !STATUS_SCHEDULED.equals(status) || !changes.isEmpty();
     }
 
-    /** Short German description of the change, e.g. "Entfall", "Vertretung (Mül)", "Raum 204". */
+    /** Short German description of the change, e.g. "Entfall", "Vertretung (Hof)", "Raum 204". */
     public String describeChange() {
         if (isCancelled()) {
             return "Entfall";
@@ -136,8 +141,9 @@ public class Lesson {
         if (changes.contains("special")) {
             parts.add("Sonderstunde");
         }
-        if (changes.contains("subject") && original != null) {
-            parts.add("statt " + (original.shownSubject.isEmpty() ? original.subject : original.shownSubject));
+        Original o = original;
+        if (changes.contains("subject") && o != null) {
+            parts.add("statt " + (o.shownSubject.isEmpty() ? o.subject : o.shownSubject));
         }
         if (changes.contains("teacher")) {
             parts.add("Vertretung" + (shownTeachers.isEmpty() ? "" : " (" + String.join(", ", shownTeachers) + ")"));
@@ -151,14 +157,15 @@ public class Lesson {
         return String.join(", ", parts);
     }
 
-    /** One line, e.g. "3. Std 09:45 M (Mül) R 204 – Vertretung (Hub)". */
+    /** One line, e.g. "3. Std 09:45 M (Bec) R 204 – Vertretung (Hof)". */
     public String toLine() {
         StringBuilder sb = new StringBuilder();
         if (!period.isEmpty()) {
             sb.append(period).append(". Std");
         }
-        if (start != null) {
-            sb.append(sb.length() > 0 ? " " : "").append(start.toString());
+        LocalTime s = start;
+        if (s != null) {
+            sb.append(sb.length() > 0 ? " " : "").append(s.toString());
         }
         String subj = !shownSubject.isEmpty() ? shownSubject : subject.isEmpty() ? subjectFull : subject;
         sb.append(sb.length() > 0 ? " " : "").append(subj);

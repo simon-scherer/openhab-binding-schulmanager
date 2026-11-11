@@ -242,12 +242,14 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
         Lesson current = null;
         Lesson next = null;
         for (Lesson l : todays) {
-            if (l.isCancelled() || l.start == null || l.end == null) {
+            LocalTime start = l.start;
+            LocalTime end = l.end;
+            if (l.isCancelled() || start == null || end == null) {
                 continue;
             }
-            if (!t.isBefore(l.start) && t.isBefore(l.end) && current == null) {
+            if (!t.isBefore(start) && t.isBefore(end) && current == null) {
                 current = l;
-            } else if (l.start.isAfter(t) && next == null) {
+            } else if (start.isAfter(t) && next == null) {
                 next = l;
             }
         }
@@ -311,9 +313,12 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
 
     private static @Nullable Lesson last(List<Lesson> lessons) {
         Lesson last = null;
+        LocalTime lastEnd = null;
         for (Lesson l : lessons) {
-            if (!l.isCancelled() && l.end != null && (last == null || l.end.isAfter(last.end))) {
+            LocalTime end = l.end;
+            if (!l.isCancelled() && end != null && (lastEnd == null || end.isAfter(lastEnd))) {
                 last = l;
+                lastEnd = end;
             }
         }
         return last;
@@ -363,8 +368,8 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
         for (Period p : schedule.periods) {
             JsonObject o = new JsonObject();
             o.addProperty("period", p.number);
-            o.addProperty("start", p.start == null ? null : p.start.toString());
-            o.addProperty("end", p.end == null ? null : p.end.toString());
+            o.addProperty("start", text(p.start));
+            o.addProperty("end", text(p.end));
             periods.add(o);
         }
         root.add("periods", periods);
@@ -377,8 +382,8 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
                 JsonObject o = new JsonObject();
                 o.addProperty("id", l.id);
                 o.addProperty("period", l.period);
-                o.addProperty("start", l.start == null ? null : l.start.toString());
-                o.addProperty("end", l.end == null ? null : l.end.toString());
+                o.addProperty("start", text(l.start));
+                o.addProperty("end", text(l.end));
                 o.addProperty("subject", l.subject);
                 o.addProperty("subject_full", l.subjectFull);
                 o.addProperty("group", l.group);
@@ -418,7 +423,7 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
             Exam n = upcoming.get(0);
             set(GROUP_EXAMS, CH_EXAM_NEXT, new StringType(examLine(n)));
             set(GROUP_EXAMS, CH_EXAM_NEXT_DATE,
-                    new DateTimeType((n.start != null ? n.date.atTime(n.start) : n.date.atStartOfDay()).atZone(z)));
+                    new DateTimeType(startOf(n).atZone(z)));
             set(GROUP_EXAMS, CH_EXAM_DAYS_UNTIL, new DecimalType(ChronoUnit.DAYS.between(today, n.date)));
         }
         long in14 = upcoming.stream().filter(x -> !x.date.isAfter(today.plusDays(14))).count();
@@ -434,7 +439,7 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
             Exam e = events.get(0);
             set(GROUP_EXAMS, CH_EXAM_NEXT_EVENT, new StringType(examLine(e)));
             set(GROUP_EXAMS, CH_EXAM_NEXT_EVENT_DATE,
-                    new DateTimeType((e.start != null ? e.date.atTime(e.start) : e.date.atStartOfDay()).atZone(z)));
+                    new DateTimeType(startOf(e).atZone(z)));
         }
         if (isLinked(GROUP_EXAMS + "#" + CH_EXAM_JSON)) {
             JsonArray arr = new JsonArray();
@@ -445,8 +450,8 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
                 o.addProperty("subject", x.subject);
                 o.addProperty("subject_short", x.subjectShort);
                 o.addProperty("period", x.period);
-                o.addProperty("start", x.start == null ? null : x.start.toString());
-                o.addProperty("end", x.end == null ? null : x.end.toString());
+                o.addProperty("start", text(x.start));
+                o.addProperty("end", text(x.end));
                 o.addProperty("comment", x.comment);
                 o.addProperty("school_event", x.schoolEvent);
                 arr.add(o);
@@ -457,8 +462,9 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
 
     static String examLine(Exam x) {
         StringBuilder sb = new StringBuilder(Format.shortDate(x.date));
-        if (x.endDate != null && x.endDate.isAfter(x.date)) {
-            sb.append(" – ").append(Format.shortDate(x.endDate));
+        LocalDate endDate = x.endDate;
+        if (endDate != null && endDate.isAfter(x.date)) {
+            sb.append(" – ").append(Format.shortDate(endDate));
         }
         sb.append(": ").append(x.title());
         if (!x.location.isEmpty()) {
@@ -467,7 +473,7 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
         if (!x.period.isEmpty() && !"X".equals(x.period)) {
             sb.append(" (").append(x.period).append(". Std)");
         } else if (x.start != null) {
-            sb.append(" (").append(x.start).append(")");
+            sb.append(" (").append(text(x.start)).append(")");
         }
         if (!x.comment.isEmpty()) {
             sb.append(" – ").append(x.comment.replace('\n', ' '));
@@ -491,20 +497,21 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
     // ================================================================== homework
 
     private void publishHomework(List<Homework> homework, LocalDate today, ZoneId z) {
-        List<Homework> recent = homework.stream().filter(h -> h.date != null && !h.date.isBefore(today.minusDays(7)))
+        List<Homework> recent = homework.stream().filter(h -> isOnOrAfter(h.date, today.minusDays(7)))
                 .toList();
         if (homework.isEmpty()) {
             set(GROUP_HOMEWORK, CH_HW_LATEST, new StringType("Keine Hausaufgaben"));
             set(GROUP_HOMEWORK, CH_HW_LATEST_DATE, UnDefType.UNDEF);
         } else {
             Homework h = homework.get(0);
+            LocalDate latest = h.date;
             set(GROUP_HOMEWORK, CH_HW_LATEST, new StringType(homeworkLine(h)));
             set(GROUP_HOMEWORK, CH_HW_LATEST_DATE,
-                    h.date == null ? UnDefType.UNDEF : new DateTimeType(h.date.atStartOfDay(z)));
+                    latest == null ? UnDefType.UNDEF : new DateTimeType(latest.atStartOfDay(z)));
         }
         set(GROUP_HOMEWORK, CH_HW_COUNT_RECENT, new DecimalType(recent.size()));
         StringBuilder sb = new StringBuilder();
-        homework.stream().filter(h -> h.date != null && !h.date.isBefore(today.minusDays(14))).limit(20)
+        homework.stream().filter(h -> isOnOrAfter(h.date, today.minusDays(14))).limit(20)
                 .forEach(h -> sb.append(homeworkLine(h)).append('\n'));
         set(GROUP_HOMEWORK, CH_HW_LIST,
                 new StringType(sb.length() == 0 ? "Keine Hausaufgaben in den letzten 14 Tagen" : sb.toString().trim()));
@@ -512,7 +519,7 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
             JsonArray arr = new JsonArray();
             for (Homework h : homework) {
                 JsonObject o = new JsonObject();
-                o.addProperty("date", h.date == null ? null : h.date.toString());
+                o.addProperty("date", text(h.date));
                 o.addProperty("subject", h.subject);
                 o.addProperty("homework", h.text);
                 arr.add(o);
@@ -522,8 +529,24 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
     }
 
     static String homeworkLine(Homework h) {
-        String d = h.date == null ? "" : Format.shortDate(h.date) + " ";
+        LocalDate date = h.date;
+        String d = date == null ? "" : Format.shortDate(date) + " ";
         return d + (h.subject.isEmpty() ? "" : h.subject + ": ") + h.text.replace('\n', ' ');
+    }
+
+    private static boolean isOnOrAfter(@Nullable LocalDate date, LocalDate limit) {
+        return date != null && !date.isBefore(limit);
+    }
+
+    /** Start of an exam or event: its time, or the start of the day. */
+    private static LocalDateTime startOf(Exam x) {
+        LocalTime start = x.start;
+        return start != null ? x.date.atTime(start) : x.date.atStartOfDay();
+    }
+
+    /** toString() of a value that may be missing, null for JSON. */
+    private static @Nullable String text(@Nullable Object value) {
+        return value == null ? null : value.toString();
     }
 
     private void detectNewHomework(List<Homework> newHomework) {
