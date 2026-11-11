@@ -307,8 +307,8 @@ public class SchulmanagerAccountHandler extends BaseBridgeHandler {
             return;
         }
         String currentUser = current == null ? "" : DataParser.str(current, "userId");
-        devices.removeIf(d -> d.equals(previous)
-                || (!currentUser.isEmpty() && currentUser.equals(DataParser.str(d, "userId"))));
+        devices.removeIf(
+                d -> d.equals(previous) || (!currentUser.isEmpty() && currentUser.equals(DataParser.str(d, "userId"))));
         if (current != null) {
             devices.add(current);
             logger.info("Device for the two-factor login remembered, the code is no longer needed");
@@ -437,7 +437,12 @@ public class SchulmanagerAccountHandler extends BaseBridgeHandler {
         for (Letters.Letter l : shown) {
             SchulmanagerClient c = clientOfLetter.get(l.id);
             if (c != null && !letterDetails.containsKey(l.id) && (!l.unread || config.lettersLoadUnread)) {
-                missing.computeIfAbsent(c, k -> new ArrayList<>()).add(l.id);
+                List<String> ids = missing.get(c);
+                if (ids == null) {
+                    ids = new ArrayList<>();
+                    missing.put(c, ids);
+                }
+                ids.add(l.id);
             }
         }
         for (Map.Entry<SchulmanagerClient, List<String>> m : missing.entrySet()) {

@@ -112,9 +112,8 @@ public class SchulmanagerClient {
     }
 
     /** With another server address, for tests. */
-    SchulmanagerClient(HttpClient http, String base, String username, String password,
-            @Nullable Integer institutionId, @Nullable Integer userId, @Nullable JsonObject userDevice,
-            @Nullable String twoFactorCode) {
+    SchulmanagerClient(HttpClient http, String base, String username, String password, @Nullable Integer institutionId,
+            @Nullable Integer userId, @Nullable JsonObject userDevice, @Nullable String twoFactorCode) {
         this.http = http;
         this.base = base;
         this.username = username;
@@ -582,7 +581,8 @@ public class SchulmanagerClient {
      * Class exams (exams/get-exams) plus school-wide calendar events visible to the student, in one batch, like the
      * web app does. Returns [exams, exam module events, calendar events, event categories], each may be null.
      */
-    public @Nullable JsonElement[] fetchExams(StudentInfo student, LocalDate start, LocalDate end) throws SchulmanagerException {
+    public @Nullable JsonElement[] fetchExams(StudentInfo student, LocalDate start, LocalDate end)
+            throws SchulmanagerException {
         JsonObject exams = new JsonObject();
         exams.add("student", studentObject(student, false));
         exams.addProperty("start", start.toString());
@@ -723,8 +723,8 @@ public class SchulmanagerClient {
                 // violation; the status is still needed to detect wrong credentials and expired sessions
                 return new Response(hre.getResponse().getStatus(), "");
             }
-            throw new SchulmanagerException("Connection error: " + (cause != null ? cause.getMessage() : e.getMessage()),
-                    e);
+            throw new SchulmanagerException(
+                    "Connection error: " + (cause != null ? cause.getMessage() : e.getMessage()), e);
         }
     }
 

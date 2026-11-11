@@ -107,8 +107,7 @@ public final class Letters {
             }
         }
         ZonedDateTime veryOld = ZonedDateTime.now(zone).minusYears(50);
-        list.sort(Comparator.comparing((Letter l) -> DataParser.orElse(l.sent, veryOld))
-                .reversed());
+        list.sort(Comparator.comparing((Letter l) -> DataParser.orElse(l.sent, veryOld)).reversed());
         return list;
     }
 

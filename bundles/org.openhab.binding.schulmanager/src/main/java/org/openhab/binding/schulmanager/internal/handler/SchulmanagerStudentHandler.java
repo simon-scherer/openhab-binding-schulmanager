@@ -394,11 +394,12 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
                 o.addProperty("status", l.status);
                 o.add("changes", strings(l.changes));
                 o.add("notes", strings(l.notes));
-                if (l.original != null) {
+                Lesson.Original original = l.original;
+                if (original != null) {
                     JsonObject orig = new JsonObject();
-                    orig.addProperty("subject", l.original.subject);
-                    orig.add("teachers", strings(l.original.teachers));
-                    orig.add("rooms", strings(l.original.rooms));
+                    orig.addProperty("subject", original.subject);
+                    orig.add("teachers", strings(original.teachers));
+                    orig.add("rooms", strings(original.rooms));
                     o.add("original", orig);
                 }
                 lessons.add(o);
@@ -422,8 +423,7 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
         } else {
             Exam n = upcoming.get(0);
             set(GROUP_EXAMS, CH_EXAM_NEXT, new StringType(examLine(n)));
-            set(GROUP_EXAMS, CH_EXAM_NEXT_DATE,
-                    new DateTimeType(startOf(n).atZone(z)));
+            set(GROUP_EXAMS, CH_EXAM_NEXT_DATE, new DateTimeType(startOf(n).atZone(z)));
             set(GROUP_EXAMS, CH_EXAM_DAYS_UNTIL, new DecimalType(ChronoUnit.DAYS.between(today, n.date)));
         }
         long in14 = upcoming.stream().filter(x -> !x.date.isAfter(today.plusDays(14))).count();
@@ -438,8 +438,7 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
         } else {
             Exam e = events.get(0);
             set(GROUP_EXAMS, CH_EXAM_NEXT_EVENT, new StringType(examLine(e)));
-            set(GROUP_EXAMS, CH_EXAM_NEXT_EVENT_DATE,
-                    new DateTimeType(startOf(e).atZone(z)));
+            set(GROUP_EXAMS, CH_EXAM_NEXT_EVENT_DATE, new DateTimeType(startOf(e).atZone(z)));
         }
         if (isLinked(GROUP_EXAMS + "#" + CH_EXAM_JSON)) {
             JsonArray arr = new JsonArray();
@@ -497,8 +496,7 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
     // ================================================================== homework
 
     private void publishHomework(List<Homework> homework, LocalDate today, ZoneId z) {
-        List<Homework> recent = homework.stream().filter(h -> isOnOrAfter(h.date, today.minusDays(7)))
-                .toList();
+        List<Homework> recent = homework.stream().filter(h -> isOnOrAfter(h.date, today.minusDays(7))).toList();
         if (homework.isEmpty()) {
             set(GROUP_HOMEWORK, CH_HW_LATEST, new StringType("Keine Hausaufgaben"));
             set(GROUP_HOMEWORK, CH_HW_LATEST_DATE, UnDefType.UNDEF);

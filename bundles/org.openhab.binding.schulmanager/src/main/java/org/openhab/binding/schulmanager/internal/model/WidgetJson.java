@@ -69,7 +69,11 @@ public final class WidgetJson {
         Map<LocalDate, List<LocalDate>> weeks = new LinkedHashMap<>();
         for (LocalDate d : s.days.keySet()) {
             LocalDate monday = d.minusDays(d.getDayOfWeek().getValue() - 1L);
-            List<LocalDate> days = weeks.computeIfAbsent(monday, k -> new ArrayList<>());
+            List<LocalDate> days = weeks.get(monday);
+            if (days == null) {
+                days = new ArrayList<>();
+                weeks.put(monday, days);
+            }
             if (d.getDayOfWeek().getValue() < 6 || !s.lessonsOn(d).isEmpty()) {
                 days.add(d);
             }
@@ -329,7 +333,11 @@ public final class WidgetJson {
                 continue;
             }
             JsonObject o = new JsonObject();
-            JsonArray items = byDay.computeIfAbsent(date, k -> new JsonArray());
+            JsonArray items = byDay.get(date);
+            if (items == null) {
+                items = new JsonArray();
+                byDay.put(date, items);
+            }
             o.addProperty("k", date + "/" + items.size());
             o.addProperty("s", h.subject);
             o.addProperty("t", h.text);

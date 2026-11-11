@@ -22,10 +22,10 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
@@ -151,7 +151,12 @@ public final class DataParser {
                 l.applyDisplay(teacherDisplay, subjectDisplay, subjectNames);
                 LocalDate date = l.date;
                 if (date != null) {
-                    raw.computeIfAbsent(date, d -> new ArrayList<>()).add(l);
+                    List<Lesson> ofDay = raw.get(date);
+                    if (ofDay == null) {
+                        ofDay = new ArrayList<>();
+                        raw.put(date, ofDay);
+                    }
+                    ofDay.add(l);
                 }
             }
         }
@@ -162,8 +167,8 @@ public final class DataParser {
             List<Lesson> merged = mergeSplitRooms(day.getValue());
             Map<String, Integer> seen = new HashMap<>();
             for (Lesson l : merged) {
-                int count = seen.merge(l.id, 1, Integer::sum);
-                if (count > 1) {
+                Integer count = seen.merge(l.id, 1, Integer::sum);
+                if (count != null && count > 1) {
                     l.id = l.id + "-" + count;
                 }
             }
@@ -406,9 +411,9 @@ public final class DataParser {
         arr(rec, "rooms").forEach(rooms::add);
         for (JsonElement r : rooms) {
             String name = "";
-            if (r != null && r.isJsonObject()) {
+            if (r.isJsonObject()) {
                 name = firstNonEmpty(str(r.getAsJsonObject(), "name"), str(r.getAsJsonObject(), "shortName"));
-            } else if (r != null && r.isJsonPrimitive()) {
+            } else if (r.isJsonPrimitive()) {
                 name = r.getAsString();
             }
             if (!name.isEmpty() && !s.rooms.contains(name)) {
@@ -432,8 +437,8 @@ public final class DataParser {
         return parseExams(examsData, eventsData, zone, SubjectNames.NONE);
     }
 
-    public static List<Exam> parseExams(@Nullable JsonElement examsData, @Nullable JsonElement eventsData,
-            ZoneId zone, SubjectNames subjectNames) {
+    public static List<Exam> parseExams(@Nullable JsonElement examsData, @Nullable JsonElement eventsData, ZoneId zone,
+            SubjectNames subjectNames) {
         return parseExams(examsData, eventsData, zone, subjectNames, null, null);
     }
 
@@ -442,9 +447,8 @@ public final class DataParser {
      *            if null, the events of the exams module (eventsData) are used
      * @param categoriesData calendar/get-event-categories
      */
-    public static List<Exam> parseExams(@Nullable JsonElement examsData, @Nullable JsonElement eventsData,
-            ZoneId zone, SubjectNames subjectNames, @Nullable JsonElement calendarData,
-            @Nullable JsonElement categoriesData) {
+    public static List<Exam> parseExams(@Nullable JsonElement examsData, @Nullable JsonElement eventsData, ZoneId zone,
+            SubjectNames subjectNames, @Nullable JsonElement calendarData, @Nullable JsonElement categoriesData) {
         List<Exam> list = new ArrayList<>();
         if (examsData != null && examsData.isJsonArray()) {
             for (JsonElement e : examsData.getAsJsonArray()) {
