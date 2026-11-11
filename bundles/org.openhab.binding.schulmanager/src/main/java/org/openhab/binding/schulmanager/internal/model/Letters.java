@@ -128,7 +128,8 @@ public final class Letters {
             o.addProperty("k", l.id);
             o.addProperty("id", l.id);
             o.addProperty("t", l.title.isEmpty() ? "Elternbrief" : l.title);
-            o.addProperty("wd", l.sent == null ? "" : l.sent.getDayOfWeek().getDisplayName(TextStyle.SHORT, DE).replace(".", ""));
+            o.addProperty("wd",
+                    l.sent == null ? "" : l.sent.getDayOfWeek().getDisplayName(TextStyle.SHORT, DE).replace(".", ""));
             o.addProperty("d", l.sent == null ? "" : l.sent.format(DMY));
             o.addProperty("dm", l.sent == null ? "" : l.sent.format(DM));
             o.addProperty("dt", l.sent == null ? "" : l.sent.format(DMYY));
@@ -140,8 +141,8 @@ public final class Letters {
                 LocalDate dd = l.deadline.toLocalDate();
                 overdue = dd.isBefore(today);
                 dl = (overdue ? "Rückmeldefrist abgelaufen (" : "Rückmeldung bis ")
-                        + dd.getDayOfWeek().getDisplayName(TextStyle.SHORT, DE).replace(".", "") + " "
-                        + dd.format(DM) + (overdue ? ")" : "");
+                        + dd.getDayOfWeek().getDisplayName(TextStyle.SHORT, DE).replace(".", "") + " " + dd.format(DM)
+                        + (overdue ? ")" : "");
             }
             o.addProperty("dl", dl);
             o.addProperty("dlx", overdue);

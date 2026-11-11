@@ -47,8 +47,10 @@
 			<parameter name="twoFactorCode" type="text" groupName="login">
 				<label>Two-Factor Code</label>
 				<description>Only for accounts with two-factor login and only once: enter the current code of the authenticator
-					app (or from the e-mail) when the bridge asks for it. Like the app, the binding then remembers a device and no
-					longer needs the code.</description>
+					app
+					(or from the e-mail) when the bridge asks for it. Like the app, the binding then remembers a device and no
+					longer
+					needs the code.</description>
 			</parameter>
 			<parameter name="refreshInterval" type="integer" min="15" max="1440" unit="min" groupName="data">
 				<label>Refresh Interval</label>
@@ -63,7 +65,8 @@
 			<parameter name="teacherDisplay" type="text" groupName="data">
 				<label>Show Teachers As</label>
 				<description>Display in the timetable and the text channels. The details always show the full name with
-					abbreviation (if the school provides names).</description>
+					abbreviation
+					(if the school provides names).</description>
 				<options>
 					<option value="lastname">Last name</option>
 					<option value="name">First and last name</option>
@@ -85,13 +88,16 @@
 			<parameter name="subjectNames" type="text" groupName="data">
 				<label>Custom Subject Names</label>
 				<description>Custom display per subject, e.g. "Ev=Religion, Swd=Sport, Sw=Sport". The key is the abbreviation or
-					the official subject name. Applies to timetable, exams and homework and overrides "Show Subjects As". The
-					details still show the official name.</description>
+					the
+					official subject name. Applies to timetable, exams and homework and overrides "Show Subjects As". The
+					details still
+					show the official name.</description>
 			</parameter>
 			<parameter name="lettersLoadUnread" type="boolean" groupName="data">
 				<label>Load Text of Unread Letters</label>
 				<description>Also loads the text of letters that are still unread. Off as long as it is not confirmed that
-					loading does not mark a letter as read in Schulmanager. Read letters are always loaded.</description>
+					loading
+					does not mark a letter as read in Schulmanager. Read letters are always loaded.</description>
 				<default>false</default>
 				<advanced>true</advanced>
 			</parameter>

@@ -212,7 +212,8 @@ public final class WidgetJson {
             orig = String.join(" · ", parts);
         }
         o.addProperty("o", orig);
-        o.addProperty("st", l.isCancelled() ? "x" : l.changes.contains("special") ? "sp" : l.isChanged() ? "chg" : "ok");
+        o.addProperty("st",
+                l.isCancelled() ? "x" : l.changes.contains("special") ? "sp" : l.isChanged() ? "chg" : "ok");
         o.addProperty("now", now);
         return o;
     }

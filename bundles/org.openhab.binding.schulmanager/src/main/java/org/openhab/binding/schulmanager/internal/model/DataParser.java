@@ -117,7 +117,8 @@ public final class DataParser {
                 p.end = time(str(ch, "until"));
                 result.periods.add(p);
             }
-            result.periods.sort(Comparator.comparing((Period p) -> periodSortKey(p.number)).thenComparing(p -> p.number));
+            result.periods
+                    .sort(Comparator.comparing((Period p) -> periodSortKey(p.number)).thenComparing(p -> p.number));
         }
 
         Map<LocalDate, List<Lesson>> raw = new TreeMap<>();
@@ -278,8 +279,8 @@ public final class DataParser {
         } else if (!str(actual, "substitutionId").isEmpty()) {
             l.id = dayIso + "-s" + str(actual, "substitutionId");
         } else {
-            l.id = dayIso + "-" + l.period + "-" + (current.subject.isEmpty() && before != null ? before.subject
-                    : current.subject);
+            l.id = dayIso + "-" + l.period + "-"
+                    + (current.subject.isEmpty() && before != null ? before.subject : current.subject);
         }
         return l;
     }
@@ -317,8 +318,7 @@ public final class DataParser {
                         && Objects.equals(a.original.group, b.original.group);
         return Objects.equals(a.date, b.date) && a.period.equals(b.period) && Objects.equals(a.start, b.start)
                 && a.subject.equals(b.subject) && a.teachers.equals(b.teachers) && Objects.equals(a.group, b.group)
-                && a.kind.equals(b.kind) && a.status.equals(b.status) && a.sourceType.equals(b.sourceType)
-                && origSame;
+                && a.kind.equals(b.kind) && a.status.equals(b.status) && a.sourceType.equals(b.sourceType) && origSame;
     }
 
     private static void addAll(List<String> target, List<String> values) {
@@ -527,14 +527,16 @@ public final class DataParser {
                 list.add(x);
             }
         }
-        list.sort(Comparator.comparing((Exam x) -> x.date)
-                .thenComparing(x -> x.start == null ? LocalTime.MIN : x.start));
+        list.sort(
+                Comparator.comparing((Exam x) -> x.date).thenComparing(x -> x.start == null ? LocalTime.MIN : x.start));
         // only drop true duplicates (same entry delivered twice); separate entries stay, as in the Schulmanager app
         List<Exam> unique = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (Exam x : list) {
-            String key = x.id.isEmpty() || x.id.equals("event-") ? x.schoolEvent + "|" + x.date + "|" + x.start + "|"
-                    + x.type + "|" + x.subject + "|" + x.period + "|" + x.comment : x.id + "|" + x.date;
+            String key = x.id.isEmpty() || x.id.equals("event-")
+                    ? x.schoolEvent + "|" + x.date + "|" + x.start + "|" + x.type + "|" + x.subject + "|" + x.period
+                            + "|" + x.comment
+                    : x.id + "|" + x.date;
             if (seen.add(key)) {
                 unique.add(x);
             }
@@ -612,15 +614,15 @@ public final class DataParser {
         return s.replaceAll("[ \t]+\n", "\n").replaceAll("\n[ \t]+", "\n").replaceAll("\n{3,}", "\n\n").trim();
     }
 
-    private static final Map<String, String> ENTITIES = Map.ofEntries(Map.entry("nbsp", " "),
-            Map.entry("lt", "<"), Map.entry("gt", ">"), Map.entry("quot", "\""), Map.entry("apos", "'"),
-            Map.entry("auml", "ä"), Map.entry("ouml", "ö"), Map.entry("uuml", "ü"), Map.entry("Auml", "Ä"),
-            Map.entry("Ouml", "Ö"), Map.entry("Uuml", "Ü"), Map.entry("szlig", "ß"), Map.entry("euro", "€"),
-            Map.entry("ndash", "–"), Map.entry("mdash", "—"), Map.entry("bdquo", "„"), Map.entry("ldquo", "“"),
-            Map.entry("rdquo", "”"), Map.entry("sbquo", "‚"), Map.entry("lsquo", "‘"), Map.entry("rsquo", "’"),
-            Map.entry("hellip", "…"), Map.entry("bull", "•"), Map.entry("middot", "·"), Map.entry("eacute", "é"),
-            Map.entry("egrave", "è"), Map.entry("agrave", "à"), Map.entry("copy", "©"), Map.entry("sect", "§"),
-            Map.entry("deg", "°"), Map.entry("times", "×"), Map.entry("shy", ""));
+    private static final Map<String, String> ENTITIES = Map.ofEntries(Map.entry("nbsp", " "), Map.entry("lt", "<"),
+            Map.entry("gt", ">"), Map.entry("quot", "\""), Map.entry("apos", "'"), Map.entry("auml", "ä"),
+            Map.entry("ouml", "ö"), Map.entry("uuml", "ü"), Map.entry("Auml", "Ä"), Map.entry("Ouml", "Ö"),
+            Map.entry("Uuml", "Ü"), Map.entry("szlig", "ß"), Map.entry("euro", "€"), Map.entry("ndash", "–"),
+            Map.entry("mdash", "—"), Map.entry("bdquo", "„"), Map.entry("ldquo", "“"), Map.entry("rdquo", "”"),
+            Map.entry("sbquo", "‚"), Map.entry("lsquo", "‘"), Map.entry("rsquo", "’"), Map.entry("hellip", "…"),
+            Map.entry("bull", "•"), Map.entry("middot", "·"), Map.entry("eacute", "é"), Map.entry("egrave", "è"),
+            Map.entry("agrave", "à"), Map.entry("copy", "©"), Map.entry("sect", "§"), Map.entry("deg", "°"),
+            Map.entry("times", "×"), Map.entry("shy", ""));
 
     private static final java.util.regex.Pattern ENTITY = java.util.regex.Pattern
             .compile("&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z]{2,8});");
@@ -720,8 +722,8 @@ public final class DataParser {
         } catch (DateTimeParseException e) {
             try {
                 // some instances omit the "Z" although the value is UTC
-                return java.time.LocalDateTime.parse(s.length() > 19 ? s.substring(0, 19) : s)
-                        .atOffset(ZoneOffset.UTC).atZoneSameInstant(zone);
+                return java.time.LocalDateTime.parse(s.length() > 19 ? s.substring(0, 19) : s).atOffset(ZoneOffset.UTC)
+                        .atZoneSameInstant(zone);
             } catch (DateTimeParseException e2) {
                 return null;
             }

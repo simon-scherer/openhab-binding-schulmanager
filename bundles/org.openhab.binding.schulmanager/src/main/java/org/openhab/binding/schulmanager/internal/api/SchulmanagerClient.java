@@ -22,10 +22,10 @@ import java.security.GeneralSecurityException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -89,8 +89,8 @@ public class SchulmanagerClient {
     private boolean deviceRevoked;
     private final Set<String> unavailableModules = new HashSet<>();
 
-    public SchulmanagerClient(HttpClient http, String username, String password, Integer institutionId,
-            Integer userId, JsonObject userDevice, String twoFactorCode) {
+    public SchulmanagerClient(HttpClient http, String username, String password, Integer institutionId, Integer userId,
+            JsonObject userDevice, String twoFactorCode) {
         this.http = http;
         this.username = username;
         this.password = password;
@@ -276,8 +276,7 @@ public class SchulmanagerClient {
         if (!rec.has("id") || rec.get("id").isJsonNull()) {
             return;
         }
-        Integer classId = rec.has("classId") && !rec.get("classId").isJsonNull() ? rec.get("classId").getAsInt()
-                : null;
+        Integer classId = rec.has("classId") && !rec.get("classId").isJsonNull() ? rec.get("classId").getAsInt() : null;
         list.add(new StudentInfo(rec.get("id").getAsString(), str(rec, "firstname"), str(rec, "lastname"), classId));
     }
 

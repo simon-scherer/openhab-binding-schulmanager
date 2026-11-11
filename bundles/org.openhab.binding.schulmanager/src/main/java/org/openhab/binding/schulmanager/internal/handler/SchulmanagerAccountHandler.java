@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -300,10 +301,10 @@ public class SchulmanagerAccountHandler extends BaseBridgeHandler {
 
     private void syncDevice(@Nullable JsonObject previous, SchulmanagerClient client) {
         JsonObject current = client.getUserDevice();
-        if (current == previous) {
+        if (Objects.equals(current, previous)) {
             return;
         }
-        devices.removeIf(d -> d == previous || (current != null && d.has("userId") && current.has("userId")
+        devices.removeIf(d -> d.equals(previous) || (current != null && d.has("userId") && current.has("userId")
                 && d.get("userId").equals(current.get("userId"))));
         if (current != null) {
             devices.add(current);

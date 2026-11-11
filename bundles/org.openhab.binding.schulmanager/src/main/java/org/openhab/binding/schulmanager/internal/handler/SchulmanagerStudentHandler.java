@@ -225,8 +225,8 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
             }
         }
         if (nextDay != null) {
-            set(GROUP_SCHEDULE, CH_NEXT_DAY, new StringType(
-                    Format.dayLabel(nextDay) + "\n" + dayText(schedule.lessonsOn(nextDay))));
+            set(GROUP_SCHEDULE, CH_NEXT_DAY,
+                    new StringType(Format.dayLabel(nextDay) + "\n" + dayText(schedule.lessonsOn(nextDay))));
             set(GROUP_SCHEDULE, CH_NEXT_DAY_DATE, new DateTimeType(nextDay.atStartOfDay(z)));
             set(GROUP_SCHEDULE, CH_FIRST_LESSON_NEXT_DAY, at(nextDay, first(schedule.lessonsOn(nextDay)), true, z));
         } else {
@@ -260,7 +260,8 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
             currentText = "Kein Unterricht";
         }
         set(GROUP_SCHEDULE, CH_CURRENT_LESSON, new StringType(currentText));
-        set(GROUP_SCHEDULE, CH_NEXT_LESSON, new StringType(next != null ? next.toLine() : "Heute keine weitere Stunde"));
+        set(GROUP_SCHEDULE, CH_NEXT_LESSON,
+                new StringType(next != null ? next.toLine() : "Heute keine weitere Stunde"));
 
         List<Lesson> changesToday = todays.stream().filter(Lesson::isChanged).toList();
         List<Lesson> changesTomorrow = tomorrows.stream().filter(Lesson::isChanged).toList();
@@ -269,8 +270,8 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
         StringBuilder sb = new StringBuilder();
         appendChanges(sb, "Heute", changesToday);
         appendChanges(sb, "Morgen", changesTomorrow);
-        set(GROUP_SCHEDULE, CH_CHANGES_SUMMARY,
-                new StringType(sb.length() == 0 ? "Keine Stundenplanänderungen für heute und morgen" : sb.toString().trim()));
+        set(GROUP_SCHEDULE, CH_CHANGES_SUMMARY, new StringType(
+                sb.length() == 0 ? "Keine Stundenplanänderungen für heute und morgen" : sb.toString().trim()));
 
         if (isLinked(GROUP_SCHEDULE + "#" + CH_SCHEDULE_JSON)) {
             publishIfChanged(GROUP_SCHEDULE, CH_SCHEDULE_JSON, scheduleJson(schedule).toString());
@@ -424,7 +425,8 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
         set(GROUP_EXAMS, CH_EXAM_COUNT_14, new DecimalType(in14));
         StringBuilder sb = new StringBuilder();
         upcoming.stream().limit(10).forEach(x -> sb.append(examLine(x)).append('\n'));
-        set(GROUP_EXAMS, CH_EXAM_LIST, new StringType(sb.length() == 0 ? "Keine Arbeiten eingetragen" : sb.toString().trim()));
+        set(GROUP_EXAMS, CH_EXAM_LIST,
+                new StringType(sb.length() == 0 ? "Keine Arbeiten eingetragen" : sb.toString().trim()));
         if (events.isEmpty()) {
             set(GROUP_EXAMS, CH_EXAM_NEXT_EVENT, new StringType("Keine Schultermine"));
             set(GROUP_EXAMS, CH_EXAM_NEXT_EVENT_DATE, UnDefType.UNDEF);
@@ -497,7 +499,8 @@ public class SchulmanagerStudentHandler extends BaseThingHandler {
         } else {
             Homework h = homework.get(0);
             set(GROUP_HOMEWORK, CH_HW_LATEST, new StringType(homeworkLine(h)));
-            set(GROUP_HOMEWORK, CH_HW_LATEST_DATE, h.date == null ? UnDefType.UNDEF : new DateTimeType(h.date.atStartOfDay(z)));
+            set(GROUP_HOMEWORK, CH_HW_LATEST_DATE,
+                    h.date == null ? UnDefType.UNDEF : new DateTimeType(h.date.atStartOfDay(z)));
         }
         set(GROUP_HOMEWORK, CH_HW_COUNT_RECENT, new DecimalType(recent.size()));
         StringBuilder sb = new StringBuilder();
