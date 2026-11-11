@@ -4,9 +4,9 @@ name: Build
 # analysis, static code analysis (SAT) and formatting rules as an official add-on.
 # A release with the JAR is published for
 #   - a pushed tag v*,
-#   - a push to main whose commit message starts with "Release v<version>" (e.g. "Release v5.2.1-beta.1"),
+#   - a push to main whose commit message starts with "Release v<version>" (e.g. "Release v5.2.4-beta.1"),
 #   - a manual run (Actions -> Build -> Run workflow) with a tag name.
-# Tags with a suffix (v5.2.1-beta.1) become pre-releases.
+# Tags with a suffix (v5.2.4-beta.1) become pre-releases.
 
 on:
   push:
@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Release tag, e.g. v5.2.1 (empty = build only)'
+        description: 'Release tag, e.g. v5.2.4 (empty = build only)'
         required: false
         default: ''
 
@@ -24,7 +24,7 @@ permissions:
   contents: write
 
 env:
-  OPENHAB_ADDONS_REF: '5.2.1'
+  OPENHAB_ADDONS_REF: '5.2.4'
   BUNDLE: org.openhab.binding.schulmanager
 
 jobs:

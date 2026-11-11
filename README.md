@@ -12,7 +12,7 @@ Timetable with substitutions, exams, school events, homework and parent letters 
 
 ## Installation
 
-Requires openHAB 5.0 or newer (developed and tested with 5.2.1).
+Requires openHAB 5.0 or newer (developed with 5.2.1, built against 5.2.4).
 
 1. Download `org.openhab.binding.schulmanager-<version>.jar` from the [latest release](https://github.com/simon-scherer/openhab-binding-schulmanager/releases/latest).
 2. Copy it into the `addons` folder of your openHAB installation (e.g. `/usr/share/openhab/addons`).
@@ -36,7 +36,7 @@ The regular build runs on GitHub Actions: it copies the bundle into a checkout o
 Locally the same works with:
 
 ```shell
-git clone --depth 1 --branch 5.2.1 https://github.com/openhab/openhab-addons
+git clone --depth 1 --branch 5.2.4 https://github.com/openhab/openhab-addons
 cp -r bundles/org.openhab.binding.schulmanager openhab-addons/bundles/
 # add <module>org.openhab.binding.schulmanager</module> to openhab-addons/bundles/pom.xml
 cd openhab-addons && mvn spotless:apply install -pl :org.openhab.binding.schulmanager

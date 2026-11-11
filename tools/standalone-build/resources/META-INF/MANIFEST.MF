@@ -3,7 +3,7 @@ Bundle-ManifestVersion: 2
 Bundle-SymbolicName: org.openhab.binding.schulmanager
 Bundle-Name: openHAB Add-ons :: Bundles :: Schulmanager Online Binding
 Bundle-Vendor: openHAB.org
-Bundle-Version: 5.2.1.202611051800
+Bundle-Version: 5.2.4
 Bundle-License: https://www.eclipse.org/legal/epl-2.0/
 Bundle-Description: Schulmanager Online: timetable, exams, school events, homework, parent letters
 Import-Package: com.google.gson;version="[2.8,3)",

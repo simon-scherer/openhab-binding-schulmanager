@@ -9,7 +9,7 @@ cd "$(dirname "$0")"
 BUNDLE=../../bundles/org.openhab.binding.schulmanager
 GSON=${GSON:-lib/gson.jar}
 SLF4J=${SLF4J:-lib/slf4j-api.jar}
-VERSION=${VERSION:-5.2.1}
+VERSION=${VERSION:-5.2.4}
 QUALIFIER=$(date -u +%Y%m%d%H%M)
 OUT=build
 rm -rf $OUT && mkdir -p $OUT/stubs $OUT/classes $OUT/jar dist
